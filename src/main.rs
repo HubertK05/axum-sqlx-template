@@ -9,6 +9,7 @@ use tokio::net::TcpListener;
 #[macro_use]
 pub extern crate tracing;
 
+pub type Result<T, E = errors::AppError> = std::result::Result<T, E>;
 
 #[tokio::main]
 async fn main() {
