@@ -1,11 +1,12 @@
 use anyhow::anyhow;
 use axum::extract::FromRef;
 use reqwest::Client;
+use serde::Deserialize;
 use sqlx::migrate::Migrator;
 use sqlx::PgPool;
-use std::env;
 use std::fmt::Display;
 
+use crate::config::Configuration;
 use crate::errors::AppError;
 // use crate::extensions::mail::Mailer;
 // use crate::extensions::oauth2::OAuth;
@@ -24,15 +25,10 @@ pub struct AppState {
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 impl AppState {
-    pub async fn new() -> Self {
-        let environment = env::var("ENVIRONMENT")
-            .map(|env| Environment::try_from(env).unwrap())
-            .unwrap_or_default();
+    pub async fn new(config: &Configuration) -> Self {
+        let db = PgPool::connect(&config.database_url).await.unwrap();
 
-        let url = env::var("DATABASE_URL").expect("missing DATABASE_URL variable");
-        let db = PgPool::connect(&url).await.unwrap();
-
-        if environment.is_prod() {
+        if config.environment.is_prod() {
             MIGRATOR.run(&db).await.expect("failed to run migrations");
         };
 
@@ -53,7 +49,7 @@ impl AppState {
             // oauth,
             // verification,
             // mailer,
-            environment,
+            environment: config.environment,
         }
     }
 
@@ -62,7 +58,7 @@ impl AppState {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Deserialize)]
 pub enum Environment {
     Development,
     Production,
@@ -70,27 +66,22 @@ pub enum Environment {
 
 impl Environment {
     pub fn is_dev(&self) -> bool {
-        match self {
-            Environment::Development => true,
-            Environment::Production => false,
-        }
+        matches!(self, Self::Development)
     }
 
     pub fn is_prod(&self) -> bool {
-        match self {
-            Environment::Development => true,
-            Environment::Production => false,
-        }
+        matches!(self, Self::Production)
     }
 }
+
 
 impl TryFrom<String> for Environment {
     type Error = AppError;
 
     fn try_from(val: String) -> Result<Self, Self::Error> {
         match &*val.to_lowercase() {
-            "dev" | "development" => Ok(Environment::Development),
-            "prod" | "production" => Ok(Environment::Production),
+            "dev" | "development" => Ok(Self::Development),
+            "prod" | "production" => Ok(Self::Production),
             _ => Err(AppError::Unexpected(anyhow!("Use `dev` or `development` to specify development environment, and `prod` or `production` to specify production environment.")))
         }
     }
@@ -98,15 +89,15 @@ impl TryFrom<String> for Environment {
 
 impl Default for Environment {
     fn default() -> Self {
-        Environment::Development
+        Self::Development
     }
 }
 
 impl Display for Environment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Environment::Development => write!(f, "development 🔨"),
-            Environment::Production => write!(f, "production 🚀"),
+            Self::Development => write!(f, "development 🔨"),
+            Self::Production => write!(f, "production 🚀"),
         }
     }
 }

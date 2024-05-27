@@ -1,10 +1,12 @@
+pub mod config;
 pub mod errors;
 pub mod routes;
 pub mod setup;
 pub mod state;
 
+use config::load_config;
 use listenfd::ListenFd;
-use setup::{address, setup_globals};
+use setup::setup_globals;
 use state::AppState;
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -18,17 +20,18 @@ pub type Result<T, E = errors::AppError> = std::result::Result<T, E>;
 async fn main() {
     setup_globals();
 
+    let config = load_config().unwrap();
     let listener = match ListenFd::from_env().take_tcp_listener(0).unwrap() {
         Some(listener) => {
             listener.set_nonblocking(true).unwrap();
             TcpListener::from_std(listener).unwrap()
         }
-        None => TcpListener::bind(address()).await.unwrap(),
+        None => TcpListener::bind(config.address).await.unwrap(),
     };
 
     let addr = listener.local_addr().unwrap();
 
-    let app_state = AppState::new().await;
+    let app_state = AppState::new(&config).await;
     info!("Constructed app state");
     info!("Environment: {}", app_state.env());
 
