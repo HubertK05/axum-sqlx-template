@@ -1,10 +1,11 @@
-use axum_sqlx_template::{errors, setup::setup_globals};
-use axum_sqlx_template::routes::app;
-use axum_sqlx_template::setup::address;
-use axum_sqlx_template::state::AppState;
+pub mod errors;
+pub mod routes;
+pub mod setup;
+pub mod state;
+
+use setup::{setup_globals, address};
+use state::AppState;
 use tokio::net::TcpListener;
-// use server::setup::address;
-// use server::{routes::app, state::AppState};
 
 #[macro_use]
 pub extern crate tracing;
@@ -24,7 +25,7 @@ async fn main() {
     info!("Constructed app state");
     info!("Environment: {}", app_state.env());
 
-    let router = app(app_state);
+    let router = routes::app(app_state);
 
     info!("listening on {}", &addr);
 
