@@ -1,5 +1,5 @@
 [package]
-name = "axum-sqlx-template"
+name = "axum_sqlx_template"
 version = "0.1.0"
 edition = "2021"
 
