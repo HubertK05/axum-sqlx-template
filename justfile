@@ -13,9 +13,9 @@ watch:
 	systemfd --no-pid -s 3000 -- cargo watch -x run
 
 # Generate query metadata to support offline compile-time verification
-sqlx:
+prepare:
 	cargo sqlx prepare --workspace -- --tests
 
 # Install development dependencies
 install:
-	cargo install systemfd cargo-watch typeshare-cli sqlx-cli
+	cargo install systemfd cargo-watch typeshare-cli sqlx-cli --locked
