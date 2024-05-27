@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.86"
 axum = { version = "0.7.5", features = ["tracing", "macros"] }
+config = "0.14.0"
 dotenvy = "0.15.7"
 listenfd = "1.0.1"
 reqwest = "0.12.4"
