@@ -1,8 +1,20 @@
 alias r := run
 alias w := watch
 
+copy_config := if os_family() == "windows" { 
+		'copy .\config\settings.example.toml .\config\settings.toml' 
+	} else { 
+		'cp ./config/settings.example.toml ./config/settings.toml' 
+	}
+
 _default:
 	@just --list
+
+
+# First time project initialisation
+[no-cd]
+bootstrap:
+	{{ copy_config }}
 
 # Standard compilation run
 run:
