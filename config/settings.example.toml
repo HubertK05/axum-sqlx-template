@@ -1,0 +1,3 @@
+database_url = "postgres://localhost/axum_template"
+environment = "development" # optional
+address = "127.0.0.1:3000" # optional
