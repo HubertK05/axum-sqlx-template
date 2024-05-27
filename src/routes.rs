@@ -3,14 +3,12 @@ use crate::{
     state::AppState,
 };
 use axum::{
-    extract::{ConnectInfo, State},
-    http::Uri,
-    response::{Html, IntoResponse, Redirect},
-    routing::get,
-    Router,
+    body::Body, extract::{ConnectInfo, State}, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, routing::get, Router
 };
 use reqwest::StatusCode;
-use std::net::SocketAddr;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tracing::Span;
+use std::{net::SocketAddr, time::Duration};
 // use utoipa::OpenApi;
 // use utoipa_swagger_ui::SwaggerUi;
 
@@ -25,6 +23,15 @@ pub fn app(app_state: AppState) -> Router {
 
     router
         .route("/", get(home_page))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &Request<Body>| {
+                    tracing::info_span!("request", method = %request.method(), uri = %request.uri())
+                })
+                .on_response(|response: &Response<_>, latency: Duration, span: &Span| {
+                    info!("Response status = {}, latency = {}ms", &response.status().as_u16(), latency.as_millis());
+                }),
+        )
         .fallback(not_found)
         .with_state(app_state)
 }
