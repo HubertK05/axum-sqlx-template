@@ -3,3 +3,5 @@ target/
 !.env.example
 *.DS_Store
 .vscode/*
+config/*
+!/config/*.example.*
