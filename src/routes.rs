@@ -32,6 +32,7 @@ pub fn app(app_state: AppState) -> Router {
                     info!("Response status = {}, latency = {}ms", &response.status().as_u16(), latency.as_millis());
                 }),
         )
+        .layer(CorsLayer::permissive())
         .fallback(not_found)
         .with_state(app_state)
 }
