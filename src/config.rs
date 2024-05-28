@@ -1,16 +1,15 @@
-use std::{convert::Infallible, net::SocketAddr};
-use config::{Config, File, FileFormat};
-use serde::Deserialize;
+use anyhow::Context;
+use config::{Config, ConfigError, File, FileFormat};
+use std::{
+    collections::HashMap,
+    env::{var, vars},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+};
 
 use crate::state::Environment;
 
-
-#[derive(Debug, Deserialize)]
-struct ConfigurationFile {
-    environment: Option<String>,
-    address: Option<SocketAddr>,
-    database_url: String,
-}
+const REQUIRED: &[&str] = &["ADDRESS", "DATABASE_URL"];
+const LOCAL_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 3000);
 
 #[derive(Debug)]
 pub struct Configuration {
@@ -19,22 +18,92 @@ pub struct Configuration {
     pub database_url: String,
 }
 
-impl TryFrom<ConfigurationFile> for Configuration {
-    type Error = Infallible;
+impl Configuration {
+    fn from_env(environment: Environment) -> Self {
+        let mut missing = vec![];
+        let mut vars: HashMap<String, String> = vars().collect();
+        for req_var in REQUIRED {
+            if let Some(val) = vars.remove(*req_var) {
+                if val.is_empty() {
+                    missing.push(val);
+                }
+            } else {
+                missing.push(req_var.to_string());
+            }
+        }
+        if !missing.is_empty() {
+            error!("Variables required: {missing:?}");
+            panic!("Configuration missing");
+        }
+        let address: SocketAddr = var("ADDRESS")
+            .unwrap()
+            .parse()
+            .expect("Invalid socket address");
+        let database_url: String = var("DATABASE_URL").unwrap();
 
-    fn try_from(value: ConfigurationFile) -> Result<Self, Self::Error> {
-        let environment = value.environment.map(|val| val.try_into().expect("unsupported environment")).unwrap_or_default();
-        Ok(Self {environment, address: value.address.unwrap_or("127.0.0.1:3000".parse().unwrap()), database_url: value.database_url})
+        Self {
+            environment,
+            address,
+            database_url,
+        }
+    }
+
+    fn from_file(environment: Environment, config: Config) -> Self {
+        let address: SocketAddr = match config.get("address") {
+            Ok(address) => address,
+            Err(e) => {
+                if matches!(e, ConfigError::NotFound(_)) {
+                    LOCAL_ADDR
+                } else {
+                    unimplemented!()
+                }
+            }
+        };
+
+        let database_url: String = config
+            .get("database_url")
+            .context("invalid database_url")
+            .unwrap();
+
+        if environment.is_dev() {
+            let environment = match config.get::<Environment>("environment") {
+                Ok(environment) => environment,
+                Err(e) => {
+                    if matches!(e, ConfigError::NotFound(_)) {
+                        warn!("environment config is missing, using default");
+                        environment
+                    } else {
+                        unimplemented!()
+                    }
+                }
+            };
+
+            return Self {
+                environment,
+                address,
+                database_url,
+            };
+        }
+        Self {
+            environment,
+            address,
+            database_url,
+        }
     }
 }
 
 pub fn load_config() -> Result<Configuration, anyhow::Error> {
-    let file = Config::builder()
-        .add_source(File::new("config/settings", FileFormat::Toml))
-        .build()?
-        .try_deserialize::<ConfigurationFile>()?;
+    let environment: Environment = var("ENVIRONMENT")
+        .map(|val| val.try_into().unwrap())
+        .unwrap_or_default();
+    match environment {
+        Environment::Development => {
+            let config = Config::builder()
+                .add_source(File::new("config/settings", FileFormat::Toml))
+                .build()?;
 
-    let configuration = Configuration::try_from(file).unwrap();
-    Ok(configuration)
+            Ok(Configuration::from_file(environment, config))
+        }
+        Environment::Production => Ok(Configuration::from_env(environment)),
+    }
 }
-

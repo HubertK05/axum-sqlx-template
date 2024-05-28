@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use axum::extract::FromRef;
 use reqwest::Client;
+use serde::de::Visitor;
 use serde::Deserialize;
 use sqlx::migrate::Migrator;
 use sqlx::PgPool;
@@ -58,10 +59,35 @@ impl AppState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug)]
 pub enum Environment {
     Development,
     Production,
+}
+
+struct EnvironmentVisitor;
+
+impl<'de> Visitor<'de> for EnvironmentVisitor {
+    type Value = Environment;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("Use `dev` or `development` to specify development environment, and `prod` or `production` to specify production environment.")
+    }
+
+    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        v.try_into().map_err(|_| E::custom("invalid value"))
+    }
+}
+impl<'de> Deserialize<'de> for Environment {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_string(EnvironmentVisitor)
+    }
 }
 
 impl Environment {
@@ -74,15 +100,14 @@ impl Environment {
     }
 }
 
-
 impl TryFrom<String> for Environment {
-    type Error = AppError;
+    type Error = anyhow::Error;
 
     fn try_from(val: String) -> Result<Self, Self::Error> {
         match &*val.to_lowercase() {
             "dev" | "development" => Ok(Self::Development),
             "prod" | "production" => Ok(Self::Production),
-            _ => Err(AppError::Unexpected(anyhow!("Use `dev` or `development` to specify development environment, and `prod` or `production` to specify production environment.")))
+            _ => Err(anyhow!("Use `dev` or `development` to specify development environment, and `prod` or `production` to specify production environment."))
         }
     }
 }
