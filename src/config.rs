@@ -65,25 +65,6 @@ impl Configuration {
             .context("invalid database_url")
             .unwrap();
 
-        if environment.is_dev() {
-            let environment = match config.get::<Environment>("environment") {
-                Ok(environment) => environment,
-                Err(e) => {
-                    if matches!(e, ConfigError::NotFound(_)) {
-                        warn!("environment config is missing, using default");
-                        environment
-                    } else {
-                        unimplemented!()
-                    }
-                }
-            };
-
-            return Self {
-                environment,
-                address,
-                database_url,
-            };
-        }
         Self {
             environment,
             address,
