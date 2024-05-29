@@ -7,8 +7,9 @@ use std::{
 };
 
 use crate::state::Environment;
-
-const REQUIRED: &[&str] = &["ADDRESS", "DATABASE_URL"];
+const ADDRESS: &str = "ADDRESS";
+const DATABASE_URL: &str = "DATABASE_URL";
+const REQUIRED: &[&str] = &[ADDRESS, DATABASE_URL];
 const LOCAL_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 3000);
 
 #[derive(Debug)]
@@ -35,11 +36,11 @@ impl Configuration {
             error!("Variables required: {missing:?}");
             panic!("Configuration missing");
         }
-        let address: SocketAddr = var("ADDRESS")
+        let address: SocketAddr = var(ADDRESS)
             .unwrap()
             .parse()
             .expect("Invalid socket address");
-        let database_url: String = var("DATABASE_URL").unwrap();
+        let database_url: String = var(DATABASE_URL).unwrap();
 
         Self {
             environment,
@@ -49,7 +50,7 @@ impl Configuration {
     }
 
     fn from_file(environment: Environment, config: Config) -> Self {
-        let address: SocketAddr = match config.get("address") {
+        let address: SocketAddr = match config.get(ADDRESS) {
             Ok(address) => address,
             Err(e) => {
                 if matches!(e, ConfigError::NotFound(_)) {
@@ -61,7 +62,7 @@ impl Configuration {
         };
 
         let database_url: String = config
-            .get("database_url")
+            .get(DATABASE_URL)
             .context("invalid database_url")
             .unwrap();
 
@@ -75,7 +76,7 @@ impl Configuration {
 
 pub fn load_config() -> Result<Configuration, anyhow::Error> {
     let environment: Environment = var("ENVIRONMENT")
-        .map(|val| val.try_into().unwrap())
+        .map(|val| val.as_str().try_into().unwrap())
         .unwrap_or_default();
     match environment {
         Environment::Development => {

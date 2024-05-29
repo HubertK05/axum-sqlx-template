@@ -71,14 +71,16 @@ impl<'de> Visitor<'de> for EnvironmentVisitor {
     type Value = Environment;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("Use `dev` or `development` to specify development environment, and `prod` or `production` to specify production environment.")
+        formatter.write_str("`dev` or `development` to specify development environment, and `prod` or `production` to specify production environment.")
     }
 
     fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        v.try_into().map_err(|_| E::custom("invalid value"))
+        v.as_str()
+            .try_into()
+            .map_err(|_| E::invalid_value(serde::de::Unexpected::Str(&v), &self))
     }
 }
 impl<'de> Deserialize<'de> for Environment {
@@ -100,11 +102,11 @@ impl Environment {
     }
 }
 
-impl TryFrom<String> for Environment {
+impl TryFrom<&str> for Environment {
     type Error = anyhow::Error;
 
-    fn try_from(val: String) -> Result<Self, Self::Error> {
-        match &*val.to_lowercase() {
+    fn try_from(val: &str) -> Result<Self, Self::Error> {
+        match val.to_lowercase().as_ref() {
             "dev" | "development" => Ok(Self::Development),
             "prod" | "production" => Ok(Self::Production),
             _ => Err(anyhow!("Use `dev` or `development` to specify development environment, and `prod` or `production` to specify production environment."))
