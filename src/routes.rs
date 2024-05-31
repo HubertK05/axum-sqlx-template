@@ -1,6 +1,5 @@
 use crate::{
-    errors::AppError,
-    state::AppState,
+    errors::AppError, state::AppState
 };
 use axum::{
     body::Body, extract::{ConnectInfo, State}, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, routing::get, Router
@@ -8,18 +7,18 @@ use axum::{
 use reqwest::StatusCode;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
+use utoipa::openapi::{Info, PathsBuilder};
+use utoipa_swagger_ui::SwaggerUi;
 use std::{net::SocketAddr, time::Duration};
-// use utoipa::OpenApi;
-// use utoipa_swagger_ui::SwaggerUi;
 
-// const SWAGGER_URI: &str = "/swagger-ui";
+const SWAGGER_URI: &str = "/swagger-ui";
 
 pub fn app(app_state: AppState) -> Router {
-    let router: Router<AppState> = Router::new();
+    let mut router: Router<AppState> = Router::new();
 
-    // if app_state.env().is_dev() {
-    //     router = add_swagger(router);
-    // };
+    if app_state.env().is_dev() {
+        router = add_swagger(router);
+    };
 
     router
         .route("/", get(home_page))
@@ -51,7 +50,8 @@ async fn not_found(
     Err(AppError::exp(StatusCode::NOT_FOUND, &msg))
 }
 
-// fn add_swagger(router: Router<AppState>) -> Router<AppState> {
-//     info!("Enabling Swagger UI");
-//     router.merge(SwaggerUi::new(SWAGGER_URI).url("/api-doc/openapi.json", doc::ApiDoc::openapi()))
-// }
+fn add_swagger(router: Router<AppState>) -> Router<AppState> {
+    info!("Enabling Swagger UI");
+    let empty_openapi = utoipa::openapi::OpenApi::new(Info::new("template", "0.1.0"), PathsBuilder::new());
+    router.merge(SwaggerUi::new(SWAGGER_URI).url("/api-doc/openapi.json", empty_openapi))
+}
