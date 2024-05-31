@@ -115,6 +115,34 @@ where
         }
     }
 
+    pub fn merge<R>(self, other: R) -> Self
+    where
+        R: Into<DocumentedRouter<S>> {
+        let DocumentedRouter { docs: other_docs, router: other_router } = other.into();
+        let mut docs = self.docs;
+        other_docs.into_iter().for_each(|(uri, path_spec)| {
+            docs.insert(uri, path_spec);
+        });
+
+        Self {
+            docs,
+            router: self.router.merge(other_router),
+        }
+    }
+
+    pub fn nest(self, path: &str, other: DocumentedRouter<S>) -> Self {
+        let DocumentedRouter { docs: other_docs, router: other_router } = other.into();
+        let mut docs = self.docs;
+        other_docs.into_iter().for_each(|(uri, path_spec)| {
+            docs.insert(format!("{path}{uri}"), path_spec);
+        });
+
+        Self {
+            docs,
+            router: self.router.nest(path, other_router),
+        }
+    }
+
     pub fn finish_doc(self, app_name: &str, app_version: &str) -> (Router<S>, OpenApi) {
         let Self { router, docs } = self;
 
