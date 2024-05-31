@@ -72,7 +72,9 @@ async fn not_found(
     Err(AppError::exp(StatusCode::NOT_FOUND, &msg))
 }
 
-fn add_swagger(router: Router<AppState>, docs: OpenApi) -> Router<AppState> {
+fn add_swagger<S>(router: Router<S>, docs: OpenApi) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static {
     info!("Enabling Swagger UI");
     router.merge(SwaggerUi::new(SWAGGER_URI).url("/api-doc/openapi.json", docs))
 }
