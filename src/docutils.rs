@@ -1,6 +1,7 @@
 use std::{collections::{BTreeMap, HashMap}, marker::PhantomData, sync::Arc};
 
 use axum::{async_trait, extract::{Path, Query}, handler::Handler, response::IntoResponse, routing::MethodRouter, Json, Router};
+use regex::Regex;
 use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn}, request_body::RequestBody, Content, Info, OpenApi, PathItem, PathItemType, PathsBuilder}, IntoParams, ToSchema};
 
 pub trait DocumentedHandler<T, S> {
@@ -107,7 +108,7 @@ where
 
     pub fn route(self, path: &str, method_router: MyMethodRouter<S>) -> Self {
         let mut docs = self.docs;
-        docs.insert(path.to_string(), method_router.docs);
+        docs.insert(into_document_form(path), method_router.docs);
 
         Self {
             docs,
@@ -133,8 +134,10 @@ where
     pub fn nest(self, path: &str, other: DocumentedRouter<S>) -> Self {
         let DocumentedRouter { docs: other_docs, router: other_router } = other.into();
         let mut docs = self.docs;
+        
+        let doc_path = into_document_form(path);
         other_docs.into_iter().for_each(|(uri, path_spec)| {
-            docs.insert(format!("{path}{uri}"), path_spec);
+            docs.insert(format!("{doc_path}{uri}"), path_spec);
         });
 
         Self {
@@ -178,6 +181,19 @@ pub fn into_operation(handler_parts: Vec<RequestPart>) -> Operation {
     }
 
     handler
+}
+
+pub fn into_document_form(path: &str) -> String {
+    let re = Regex::new(r":[0-9A-Za-z-_]*").expect("Failed to build regex");
+
+    let matches = re.find_iter(path);
+    let mut path = re.replace_all(path, ":").to_string();
+
+    for elem in matches {
+        path = path.replacen(":", &format!("{{{}}}", &elem.as_str()[1..]), 1);
+    }
+
+    path
 }
 
 pub struct MyMethodRouter<S: Clone + Send + Sync + 'static> {
@@ -241,5 +257,24 @@ impl<S: Clone + Send + Sync + 'static> MyMethodRouter<S> {
             docs,
             method_router: self.method_router.delete(handler)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case("/", "/")]
+    #[case("/:user_id", "/{user_id}")]
+    #[case("/:transaction_id/books/:book_id/price", "/{transaction_id}/books/{book_id}/price")]
+    #[case("/:/foo", "/{}/foo")]
+    #[case("/foo/:", "/foo/{}")]
+    #[case("/foo/:bar", "/foo/{bar}")]
+    #[case("/foo/:Bar-baZ09", "/foo/{Bar-baZ09}")]
+    fn path_changes_from_server_to_docs_form(#[case] a: &str, #[case] b: &str) {
+        assert_eq!(into_document_form(a), b);
     }
 }
