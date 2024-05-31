@@ -1,23 +1,28 @@
 use crate::{
-    errors::AppError, state::AppState
+    docutils::{DocumentedRouter, MyMethodRouter}, errors::AppError, state::AppState
 };
 use axum::{
-    body::Body, extract::{ConnectInfo, State}, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, routing::get, Router
+    body::Body, extract::{ConnectInfo, Path, Query, State}, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, routing::get, Json, Router
 };
 use reqwest::StatusCode;
+use serde::Deserialize;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
-use utoipa::openapi::{Info, PathsBuilder};
+use utoipa::{openapi::{Info, OpenApi, PathsBuilder}, IntoParams, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 use std::{net::SocketAddr, time::Duration};
 
 const SWAGGER_URI: &str = "/swagger-ui";
 
 pub fn app(app_state: AppState) -> Router {
+    let (documented_router, docs) = DocumentedRouter::<()>::new()
+        .route("/", MyMethodRouter::new().get(home_page))
+        .finish_doc("template", "0.1.0");
+
     let mut router: Router<AppState> = Router::new();
 
     if app_state.env().is_dev() {
-        router = add_swagger(router);
+        router = add_swagger(router, docs);
     };
 
     router
@@ -36,7 +41,24 @@ pub fn app(app_state: AppState) -> Router {
         .with_state(app_state)
 }
 
-async fn home_page() -> impl IntoResponse {
+#[derive(Deserialize, IntoParams)]
+pub struct PathParams {
+    first: String
+}
+
+#[derive(Deserialize, IntoParams)]
+pub struct QueryParams {
+    first: String,
+    second: String,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ReqBody {
+    first: String,
+    second: String,
+}
+
+async fn home_page(Path(p): Path<PathParams>, Query(q): Query<QueryParams>, Json(b): Json<ReqBody>) -> impl IntoResponse {
     trace!("Welcome to the API home page!");
     (StatusCode::OK, Html("<h1>API home page</h1>"))
 }
@@ -50,8 +72,7 @@ async fn not_found(
     Err(AppError::exp(StatusCode::NOT_FOUND, &msg))
 }
 
-fn add_swagger(router: Router<AppState>) -> Router<AppState> {
+fn add_swagger(router: Router<AppState>, docs: OpenApi) -> Router<AppState> {
     info!("Enabling Swagger UI");
-    let empty_openapi = utoipa::openapi::OpenApi::new(Info::new("template", "0.1.0"), PathsBuilder::new());
-    router.merge(SwaggerUi::new(SWAGGER_URI).url("/api-doc/openapi.json", empty_openapi))
+    router.merge(SwaggerUi::new(SWAGGER_URI).url("/api-doc/openapi.json", docs))
 }
