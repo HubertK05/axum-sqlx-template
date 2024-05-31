@@ -3,8 +3,6 @@ use std::{collections::{BTreeMap, HashMap}, marker::PhantomData, sync::Arc};
 use axum::{async_trait, extract::{Path, Query}, handler::Handler, response::IntoResponse, routing::MethodRouter, Json, Router};
 use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn}, request_body::RequestBody, Content, Info, OpenApi, PathItem, PathItemType, PathsBuilder}, IntoParams, ToSchema};
 
-const DEFAULT_BODY_CONTENT_NAME: &str = "Request body";
-
 pub trait DocumentedHandler<T, S> {
     fn extract_docs(&self) -> Vec<RequestPart>;
 }
@@ -78,10 +76,10 @@ impl<'a, T> DocExtractor for Json<T>
 where T: ToSchema<'a> {
     fn to_open_api() -> RequestPart {
         let mut body = RequestBody::new();
-        let (_, schema) = T::schema();
+        let (name, schema) = T::schema();
         let content = Content::new(schema);
 
-        body.content.insert(DEFAULT_BODY_CONTENT_NAME.to_string(), content.clone());
+        body.content.insert(name.to_string(), content.clone());
 
         RequestPart::Body(body)
     }
