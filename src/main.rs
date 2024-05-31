@@ -1,4 +1,5 @@
 pub mod config;
+pub mod docutils;
 pub mod errors;
 pub mod routes;
 pub mod setup;
