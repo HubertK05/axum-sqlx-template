@@ -1,14 +1,13 @@
 use crate::{
-    docutils::{get, DocRouter, DocMethodRouter}, errors::AppError, state::AppState
+    docutils::{get, DocRouter}, errors::AppError, state::AppState
 };
 use axum::{
-    body::Body, extract::{ConnectInfo, Path, Query, State}, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, Json, Router
+    body::Body, extract::ConnectInfo, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, Router
 };
 use reqwest::StatusCode;
-use serde::Deserialize;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
-use utoipa::{openapi::{Info, OpenApi, PathsBuilder}, IntoParams, ToSchema};
+use utoipa::openapi::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 use std::{net::SocketAddr, time::Duration};
 
@@ -18,8 +17,6 @@ pub fn app(app_state: AppState) -> Router {
     let (mut documented_router, docs) = DocRouter::new("template", "0.1.0")
         .route("/", get(home_page).post(home_page))
         .finish_doc();
-
-    let mut router: Router<AppState> = Router::new();
 
     if app_state.env().is_dev() {
         documented_router = add_swagger(documented_router, docs);
@@ -40,24 +37,7 @@ pub fn app(app_state: AppState) -> Router {
         .with_state(app_state)
 }
 
-#[derive(Deserialize, IntoParams)]
-pub struct PathParams {
-    first: String
-}
-
-#[derive(Deserialize, IntoParams)]
-pub struct QueryParams {
-    first: String,
-    second: String,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct ReqBody {
-    first: String,
-    second: String,
-}
-
-async fn home_page(Path(p): Path<PathParams>, Query(q): Query<QueryParams>, Json(b): Json<ReqBody>) -> impl IntoResponse {
+async fn home_page() -> impl IntoResponse {
     trace!("Welcome to the API home page!");
     (StatusCode::OK, Html("<h1>API home page</h1>"))
 }

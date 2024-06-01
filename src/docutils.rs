@@ -1,8 +1,8 @@
-use std::{collections::{BTreeMap, HashMap}, marker::PhantomData, sync::Arc};
+use std::collections::{BTreeMap, HashMap};
 
-use axum::{async_trait, extract::{Path, Query}, handler::Handler, response::IntoResponse, routing::MethodRouter, Json, Router};
+use axum::{extract::{Path, Query}, handler::Handler, routing::MethodRouter, Json, Router};
 use regex::Regex;
-use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn, PathItemBuilder}, request_body::RequestBody, Components, Content, Info, OpenApi, PathItem, PathItemType, Paths, PathsBuilder, Ref, RefOr, Schema}, IntoParams, ToSchema};
+use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn, PathItemBuilder}, request_body::RequestBody, Components, Content, Info, OpenApi, PathItem, PathItemType, Paths, Ref, RefOr, Schema}, IntoParams, ToSchema};
 
 pub trait DocHandler<T, S> {
     fn extract_docs(&self) -> Vec<RequestPart>;
