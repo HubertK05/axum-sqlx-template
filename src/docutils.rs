@@ -4,11 +4,11 @@ use axum::{async_trait, extract::{Path, Query}, handler::Handler, response::Into
 use regex::Regex;
 use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn, PathItemBuilder}, request_body::RequestBody, Components, Content, Info, OpenApi, PathItem, PathItemType, Paths, PathsBuilder, Ref, RefOr, Schema}, IntoParams, ToSchema};
 
-pub trait DocumentedHandler<T, S> {
+pub trait DocHandler<T, S> {
     fn extract_docs(&self) -> Vec<RequestPart>;
 }
 
-impl<F, S> DocumentedHandler<((), ), S> for F
+impl<F, S> DocHandler<((), ), S> for F
 where
     F: Handler<((), ), S> {
     fn extract_docs(&self) -> Vec<RequestPart> {
@@ -21,7 +21,7 @@ macro_rules! impl_doc_handler {
         $($ty:ident),*
     ) => {
         #[allow(non_snake_case, unused_mut)]
-        impl<F, M, $($ty,)* S> DocumentedHandler<(M, $($ty,)*), S> for F
+        impl<F, M, $($ty,)* S> DocHandler<(M, $($ty,)*), S> for F
         where
             F: Handler<(M, $($ty,)*), S>,
             $( $ty: DocExtractor, )*
@@ -42,7 +42,7 @@ macro_rules! impl_method_router {
         $($ty:ident, $en:ident)*
     ) => {
         $(
-            pub fn $ty<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static>(self, handler: H) -> Self {
+            pub fn $ty<H: Handler<T, S> + DocHandler<T, S>, T: 'static>(self, handler: H) -> Self {
                 let mut docs = self.docs;
                 docs.insert(PathItemType::$en, handler.extract_docs().into());
                 
@@ -60,11 +60,11 @@ macro_rules! impl_method_router_start {
         $($ty:ident, $en:ident)*
     ) => {
         $(
-            pub fn $ty<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static, S: Clone + Send + Sync + 'static>(handler: H) -> MyMethodRouter<S> {
+            pub fn $ty<H: Handler<T, S> + DocHandler<T, S>, T: 'static, S: Clone + Send + Sync + 'static>(handler: H) -> DocMethodRouter<S> {
                 let mut docs = PathDocs::new();
                 docs.insert(PathItemType::$en, handler.extract_docs().into());
                 
-                MyMethodRouter {
+                DocMethodRouter {
                     docs,
                     method_router: axum::routing::$ty(handler)
                 }
@@ -235,12 +235,12 @@ impl From<Vec<RequestPart>> for HandlerData {
     }
 }
 
-pub struct DocumentedRouter<'a, S> {
+pub struct DocRouter<'a, S> {
     docs: AppDocs<'a>,
     router: Router<S>,
 }
 
-impl<'a, S> DocumentedRouter<'a, S>
+impl<'a, S> DocRouter<'a, S>
 where
     S: Clone + Send + Sync + 'static {
     pub fn new(app_name: &'a str, version: &'a str) -> Self {
@@ -250,7 +250,7 @@ where
         }
     }
 
-    pub fn route(self, path: &str, method_router: MyMethodRouter<S>) -> Self {
+    pub fn route(self, path: &str, method_router: DocMethodRouter<S>) -> Self {
         let mut docs = self.docs;
         docs.insert_path(into_document_form(path), method_router.docs);
 
@@ -262,8 +262,8 @@ where
 
     pub fn merge<R>(self, other: R) -> Self
     where
-        R: Into<DocumentedRouter<'a, S>> {
-        let DocumentedRouter { docs: other_docs, router: other_router } = other.into();
+        R: Into<DocRouter<'a, S>> {
+        let DocRouter { docs: other_docs, router: other_router } = other.into();
         let mut docs = self.docs;
         other_docs.paths.into_iter().for_each(|(uri, path_spec)| {
             docs.insert_path(uri, path_spec);
@@ -275,8 +275,8 @@ where
         }
     }
 
-    pub fn nest(self, path: &str, other: DocumentedRouter<S>) -> Self {
-        let DocumentedRouter { docs: other_docs, router: other_router } = other.into();
+    pub fn nest(self, path: &str, other: DocRouter<S>) -> Self {
+        let DocRouter { docs: other_docs, router: other_router } = other.into();
         let mut docs = self.docs;
         
         let doc_path = into_document_form(path);
@@ -310,12 +310,12 @@ pub fn into_document_form(path: &str) -> String {
     path
 }
 
-pub struct MyMethodRouter<S: Clone + Send + Sync + 'static> {
+pub struct DocMethodRouter<S: Clone + Send + Sync + 'static> {
     docs: PathDocs,
     method_router: MethodRouter<S>,
 }
 
-impl<S: Clone + Send + Sync + 'static> MyMethodRouter<S> {
+impl<S: Clone + Send + Sync + 'static> DocMethodRouter<S> {
     pub fn new() -> Self {
         Self {
             docs: PathDocs::new(),

@@ -1,5 +1,5 @@
 use crate::{
-    docutils::{get, DocumentedRouter, MyMethodRouter}, errors::AppError, state::AppState
+    docutils::{get, DocRouter, DocMethodRouter}, errors::AppError, state::AppState
 };
 use axum::{
     body::Body, extract::{ConnectInfo, Path, Query, State}, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, Json, Router
@@ -15,7 +15,7 @@ use std::{net::SocketAddr, time::Duration};
 const SWAGGER_URI: &str = "/swagger-ui";
 
 pub fn app(app_state: AppState) -> Router {
-    let (mut documented_router, docs) = DocumentedRouter::new("template", "0.1.0")
+    let (mut documented_router, docs) = DocRouter::new("template", "0.1.0")
         .route("/", get(home_page).post(home_page))
         .finish_doc();
 
