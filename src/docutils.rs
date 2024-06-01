@@ -37,6 +37,42 @@ macro_rules! impl_doc_handler {
     };
 }
 
+macro_rules! impl_method_router {
+    (
+        $($ty:ident, $en:ident)*
+    ) => {
+        $(
+            pub fn $ty<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static>(self, handler: H) -> Self {
+                let mut docs = self.docs;
+                docs.insert(PathItemType::$en, handler.extract_docs().into());
+                
+                Self {
+                    docs,
+                    method_router: self.method_router.$ty(handler)
+                }
+            }
+        )*
+    }
+}
+
+macro_rules! impl_method_router_start {
+    (
+        $($ty:ident, $en:ident)*
+    ) => {
+        $(
+            pub fn $ty<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static, S: Clone + Send + Sync + 'static>(handler: H) -> MyMethodRouter<S> {
+                let mut docs = PathDocs::new();
+                docs.insert(PathItemType::$en, handler.extract_docs().into());
+                
+                MyMethodRouter {
+                    docs,
+                    method_router: axum::routing::$ty(handler)
+                }
+            }
+        )*
+    }
+}
+
 impl_doc_handler!(T1);
 impl_doc_handler!(T1, T2);
 impl_doc_handler!(T1, T2, T3);
@@ -287,56 +323,18 @@ impl<S: Clone + Send + Sync + 'static> MyMethodRouter<S> {
         }
     }
 
-    pub fn get<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static>(self, handler: H) -> Self {
-        let mut docs = self.docs;
-        docs.insert(PathItemType::Get, handler.extract_docs().into());
-        
-        Self {
-            docs,
-            method_router: self.method_router.get(handler)
-        }
-    }
-
-    pub fn post<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static>(self, handler: H) -> Self {
-        let mut docs = self.docs;
-        docs.insert(PathItemType::Post, handler.extract_docs().into());
-        
-        Self {
-            docs,
-            method_router: self.method_router.post(handler)
-        }
-    }
-    
-    pub fn put<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static>(self, handler: H) -> Self {
-        let mut docs = self.docs;
-        docs.insert(PathItemType::Put, handler.extract_docs().into());
-        
-        Self {
-            docs,
-            method_router: self.method_router.put(handler)
-        }
-    }
-    
-    pub fn patch<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static>(self, handler: H) -> Self {
-        let mut docs = self.docs;
-        docs.insert(PathItemType::Patch, handler.extract_docs().into());
-        
-        Self {
-            docs,
-            method_router: self.method_router.patch(handler)
-        }
-    }
-
-    pub fn delete<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static>(self, handler: H) -> Self {
-        let mut docs = self.docs;
-        docs.insert(PathItemType::Delete, handler.extract_docs().into());
-        
-        Self {
-            docs,
-            method_router: self.method_router.delete(handler)
-        }
-    }
+    impl_method_router!(get, Get);
+    impl_method_router!(post, Post);
+    impl_method_router!(put, Put);
+    impl_method_router!(patch, Patch);
+    impl_method_router!(delete, Delete);
 }
+
+impl_method_router_start!(get, Get);
+impl_method_router_start!(post, Post);
+impl_method_router_start!(put, Put);
+impl_method_router_start!(patch, Patch);
+impl_method_router_start!(delete, Delete);
 
 #[cfg(test)]
 mod tests {

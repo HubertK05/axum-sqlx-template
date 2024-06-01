@@ -1,8 +1,8 @@
 use crate::{
-    docutils::{DocumentedRouter, MyMethodRouter}, errors::AppError, state::AppState
+    docutils::{get, DocumentedRouter, MyMethodRouter}, errors::AppError, state::AppState
 };
 use axum::{
-    body::Body, extract::{ConnectInfo, Path, Query, State}, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, routing::get, Json, Router
+    body::Body, extract::{ConnectInfo, Path, Query, State}, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, Json, Router
 };
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -15,18 +15,17 @@ use std::{net::SocketAddr, time::Duration};
 const SWAGGER_URI: &str = "/swagger-ui";
 
 pub fn app(app_state: AppState) -> Router {
-    let (documented_router, docs) = DocumentedRouter::<()>::new("template", "0.1.0")
-        .route("/", MyMethodRouter::new().get(home_page))
+    let (mut documented_router, docs) = DocumentedRouter::new("template", "0.1.0")
+        .route("/", get(home_page).post(home_page))
         .finish_doc();
 
     let mut router: Router<AppState> = Router::new();
 
     if app_state.env().is_dev() {
-        router = add_swagger(router, docs);
+        documented_router = add_swagger(documented_router, docs);
     };
 
-    router
-        .route("/", get(home_page))
+    documented_router
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<Body>| {
