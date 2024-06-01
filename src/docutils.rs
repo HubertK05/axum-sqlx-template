@@ -16,44 +16,43 @@ where
     } 
 }
 
-impl<F, M, T1, S> DocumentedHandler<(M, T1), S> for F
-where
-    F: Handler<(M, T1), S>,
-    T1: DocExtractor {
-    fn extract_docs(&self) -> Vec<RequestPart> {
-        vec![
-            T1::to_open_api(),
-        ]
-    }
+macro_rules! impl_doc_handler {
+    (
+        $($ty:ident),*
+    ) => {
+        #[allow(non_snake_case, unused_mut)]
+        impl<F, M, $($ty,)* S> DocumentedHandler<(M, $($ty,)*), S> for F
+        where
+            F: Handler<(M, $($ty,)*), S>,
+            $( $ty: DocExtractor, )*
+        {
+            fn extract_docs(&self) -> Vec<RequestPart> {
+                vec![
+                    $(
+                        $ty::to_open_api(),
+                    )*
+                ]
+            }
+        }
+    };
 }
 
-impl<F, M, T1, T2, S> DocumentedHandler<(M, T1, T2), S> for F
-where
-    F: Handler<(M, T1, T2), S>,
-    T1: DocExtractor,
-    T2: DocExtractor {
-    fn extract_docs(&self) -> Vec<RequestPart> {
-        vec![
-            T1::to_open_api(),
-            T2::to_open_api(),
-        ]
-    }
-}
-
-impl<F, M, T1, T2, T3, S> DocumentedHandler<(M, T1, T2, T3), S> for F
-where
-    F: Handler<(M, T1, T2, T3), S>,
-    T1: DocExtractor,
-    T2: DocExtractor,
-    T3: DocExtractor {
-    fn extract_docs(&self) -> Vec<RequestPart> {
-        vec![
-            T1::to_open_api(),
-            T2::to_open_api(),
-            T3::to_open_api(),
-        ]
-    }
-}
+impl_doc_handler!(T1);
+impl_doc_handler!(T1, T2);
+impl_doc_handler!(T1, T2, T3);
+impl_doc_handler!(T1, T2, T3, T4);
+impl_doc_handler!(T1, T2, T3, T4, T5);
+impl_doc_handler!(T1, T2, T3, T4, T5, T6);
+impl_doc_handler!(T1, T2, T3, T4, T5, T6, T7);
+impl_doc_handler!(T1, T2, T3, T4, T5, T6, T7, T8);
+impl_doc_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9);
+impl_doc_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
+impl_doc_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
+impl_doc_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
+impl_doc_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
+impl_doc_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14);
+impl_doc_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15);
+impl_doc_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16);
 
 pub trait DocExtractor {
     fn to_open_api() -> RequestPart;
