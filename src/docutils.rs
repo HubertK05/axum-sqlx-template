@@ -2,7 +2,7 @@ use std::{collections::{BTreeMap, HashMap}, marker::PhantomData, sync::Arc};
 
 use axum::{async_trait, extract::{Path, Query}, handler::Handler, response::IntoResponse, routing::MethodRouter, Json, Router};
 use regex::Regex;
-use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn}, request_body::RequestBody, Components, Content, Info, OpenApi, PathItem, PathItemType, PathsBuilder, Ref, RefOr, Schema}, IntoParams, ToSchema};
+use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn, PathItemBuilder}, request_body::RequestBody, Components, Content, Info, OpenApi, PathItem, PathItemType, Paths, PathsBuilder, Ref, RefOr, Schema}, IntoParams, ToSchema};
 
 pub trait DocumentedHandler<T, S> {
     fn extract_docs(&self) -> Vec<RequestPart>;
@@ -86,24 +86,138 @@ pub enum RequestPart {
     Schema(String, RefOr<Schema>),
 }
 
-pub struct DocumentedRouter<S> {
-    pub docs: HashMap<String, HashMap<PathItemType, Vec<RequestPart>>>,
-    pub router: Router<S>,
+struct AppDocs<'a> {
+    app_name: &'a str,
+    version: &'a str,
+    paths: HashMap<String, PathDocs>,
 }
 
-impl<S> DocumentedRouter<S>
+impl<'a> AppDocs<'a> {
+    fn new(app_name: &'a str, version: &'a str) -> Self {
+        Self {
+            app_name,
+            version,
+            paths: HashMap::new(),
+        }
+    }
+
+    fn insert_path(&mut self, path: String, path_docs: PathDocs) -> Option<PathDocs> {
+        self.paths.insert(path, path_docs)
+    }
+}
+
+impl<'a> From<AppDocs<'a>> for OpenApi {
+    fn from(val: AppDocs) -> Self {
+        let mut res = OpenApi::new(Info::new(val.app_name, val.version), Paths::new());
+
+        for (uri, path_spec) in val.paths {
+            let Some((path_openapi, collected_schemas)) = path_spec.collect() else {
+                continue;
+            };
+
+            res.paths.paths.insert(uri, path_openapi);
+
+            if !collected_schemas.is_empty() {
+                let components = res.components.get_or_insert(Components::new());
+                components.schemas.extend(collected_schemas);
+            }
+        };
+
+        res
+    }
+}
+
+struct PathDocs(HashMap<PathItemType, HandlerData>);
+
+impl PathDocs {
+    fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    fn insert(&mut self, method: PathItemType, handler_data: HandlerData) -> Option<HandlerData> {
+        self.0.insert(method, handler_data)
+    }
+
+    fn collect(self) -> Option<(PathItem, BTreeMap<String, RefOr<Schema>>)> {
+        if self.0.is_empty() {
+            return None
+        }
+
+        let mut res = PathItemBuilder::new();
+        let mut schema_map = BTreeMap::new();
+
+        for (method, handler) in self.0 {
+            let (operation, schema) = handler.collect();
+            res = res.operation(method, operation);
+            schema_map.extend(schema.into_iter());
+        }
+
+        Some((res.build(), schema_map))
+    }
+}
+
+struct HandlerData {
+    params: Vec<Parameter>,
+    schema: Option<(String, RefOr<Schema>)>,
+}
+
+impl HandlerData {
+    fn new() -> Self {
+        Self {
+            params: Vec::new(),
+            schema: None,
+        }
+    }
+
+    fn collect(self) -> (Operation, Option<(String, RefOr<Schema>)>) {
+        let mut res = Operation::new();
+        res.parameters = Some(self.params);
+        if let Some((ref schema_name, _)) = self.schema {
+            let mut body = RequestBody::new();
+            let content = Content::new(RefOr::Ref(Ref::from_schema_name(schema_name.clone())));
+            body.content = BTreeMap::from([(schema_name.clone(), content)]);
+            res.request_body = Some(body);
+        }
+        
+        (res, self.schema)
+    }
+}
+
+impl From<Vec<RequestPart>> for HandlerData {
+    fn from(val: Vec<RequestPart>) -> Self {
+        let mut res = HandlerData::new();
+
+        for elem in val {
+            match elem {
+                RequestPart::Params(params) => res.params.extend(params),
+                RequestPart::Schema(name, schema) => {
+                    res.schema = Some((name, schema));
+                },
+            }
+        }
+        
+        res
+    }
+}
+
+pub struct DocumentedRouter<'a, S> {
+    docs: AppDocs<'a>,
+    router: Router<S>,
+}
+
+impl<'a, S> DocumentedRouter<'a, S>
 where
     S: Clone + Send + Sync + 'static {
-    pub fn new() -> Self {
+    pub fn new(app_name: &'a str, version: &'a str) -> Self {
         Self {
-            docs: HashMap::new(),
+            docs: AppDocs::new(app_name, version),
             router: Router::new(),
         }
     }
 
     pub fn route(self, path: &str, method_router: MyMethodRouter<S>) -> Self {
         let mut docs = self.docs;
-        docs.insert(into_document_form(path), method_router.docs);
+        docs.insert_path(into_document_form(path), method_router.docs);
 
         Self {
             docs,
@@ -113,11 +227,11 @@ where
 
     pub fn merge<R>(self, other: R) -> Self
     where
-        R: Into<DocumentedRouter<S>> {
+        R: Into<DocumentedRouter<'a, S>> {
         let DocumentedRouter { docs: other_docs, router: other_router } = other.into();
         let mut docs = self.docs;
-        other_docs.into_iter().for_each(|(uri, path_spec)| {
-            docs.insert(uri, path_spec);
+        other_docs.paths.into_iter().for_each(|(uri, path_spec)| {
+            docs.insert_path(uri, path_spec);
         });
 
         Self {
@@ -131,8 +245,8 @@ where
         let mut docs = self.docs;
         
         let doc_path = into_document_form(path);
-        other_docs.into_iter().for_each(|(uri, path_spec)| {
-            docs.insert(format!("{doc_path}{uri}"), path_spec);
+        other_docs.paths.into_iter().for_each(|(uri, path_spec)| {
+            docs.insert_path(format!("{doc_path}{uri}"), path_spec);
         });
 
         Self {
@@ -141,68 +255,11 @@ where
         }
     }
 
-    pub fn finish_doc(self, app_name: &str, app_version: &str) -> (Router<S>, OpenApi) {
+    pub fn finish_doc(self) -> (Router<S>, OpenApi) {
         let Self { router, docs } = self;
 
-        let mut res = utoipa::openapi::OpenApi::new(Info::new(app_name, app_version), PathsBuilder::new());
-        for (path, path_spec) in docs {
-            let mut path_spec = path_spec.into_iter();
-            let Some((method, handler_parts)) = path_spec.next() else {
-                continue;
-            };
-
-            let (operation, schemas) = into_operation(handler_parts);
-            res.paths.paths.insert(path.clone(), PathItem::new(method, operation));
-            if !schemas.is_empty() {
-                if let Some(ref mut components) = res.components {
-                    components.schemas.extend(schemas.into_iter());
-                } else {
-                    let mut components = Components::new();
-                    components.schemas.extend(schemas.into_iter());
-                    res.components = Some(components);
-                }
-            }
-
-            for (method, handler_parts) in path_spec {
-                let (operation, schemas) = into_operation(handler_parts);
-                res.paths.paths.get_mut(&path).unwrap().operations.insert(method, operation);
-                
-                if !schemas.is_empty() {
-                    if let Some(ref mut components) = res.components {
-                        components.schemas.extend(schemas.into_iter());
-                    } else {
-                        let mut components = Components::new();
-                        components.schemas.extend(schemas.into_iter());
-                        res.components = Some(components);
-                    }
-                }
-            }
-        }
-
-        (router, res)
+        (router, OpenApi::from(docs))
     }
-}
-
-pub fn into_operation(handler_parts: Vec<RequestPart>) -> (Operation, Vec<(String, RefOr<Schema>)>) {
-    let mut handler = Operation::new();
-    let mut schemas = Vec::new();
-    for elem in handler_parts {
-        match elem {
-            RequestPart::Schema(name, schema) => {
-                let mut request = RequestBody::new();
-                request.content.insert(name.to_string(), Content::new(RefOr::Ref(Ref::from_schema_name(name.clone()))));
-                handler.request_body = Some(request);
-                schemas.push((name, schema));
-            },
-            RequestPart::Params(params) => {
-                let mut temp_vec = handler.parameters.unwrap_or_default();
-                temp_vec.extend(params.into_iter());
-                handler.parameters = Some(temp_vec);
-            }
-        }
-    }
-
-    (handler, schemas)
 }
 
 pub fn into_document_form(path: &str) -> String {
@@ -219,21 +276,21 @@ pub fn into_document_form(path: &str) -> String {
 }
 
 pub struct MyMethodRouter<S: Clone + Send + Sync + 'static> {
-    pub docs: HashMap<PathItemType, Vec<RequestPart>>,
-    pub method_router: MethodRouter<S>,
+    docs: PathDocs,
+    method_router: MethodRouter<S>,
 }
 
 impl<S: Clone + Send + Sync + 'static> MyMethodRouter<S> {
     pub fn new() -> Self {
         Self {
-            docs: HashMap::new(),
+            docs: PathDocs::new(),
             method_router: MethodRouter::new(),
         }
     }
 
     pub fn get<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static>(self, handler: H) -> Self {
         let mut docs = self.docs;
-        docs.insert(PathItemType::Get, handler.extract_docs());
+        docs.insert(PathItemType::Get, handler.extract_docs().into());
         
         Self {
             docs,
@@ -243,7 +300,7 @@ impl<S: Clone + Send + Sync + 'static> MyMethodRouter<S> {
 
     pub fn post<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static>(self, handler: H) -> Self {
         let mut docs = self.docs;
-        docs.insert(PathItemType::Post, handler.extract_docs());
+        docs.insert(PathItemType::Post, handler.extract_docs().into());
         
         Self {
             docs,
@@ -253,7 +310,7 @@ impl<S: Clone + Send + Sync + 'static> MyMethodRouter<S> {
     
     pub fn put<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static>(self, handler: H) -> Self {
         let mut docs = self.docs;
-        docs.insert(PathItemType::Put, handler.extract_docs());
+        docs.insert(PathItemType::Put, handler.extract_docs().into());
         
         Self {
             docs,
@@ -263,7 +320,7 @@ impl<S: Clone + Send + Sync + 'static> MyMethodRouter<S> {
     
     pub fn patch<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static>(self, handler: H) -> Self {
         let mut docs = self.docs;
-        docs.insert(PathItemType::Patch, handler.extract_docs());
+        docs.insert(PathItemType::Patch, handler.extract_docs().into());
         
         Self {
             docs,
@@ -273,7 +330,7 @@ impl<S: Clone + Send + Sync + 'static> MyMethodRouter<S> {
 
     pub fn delete<H: Handler<T, S> + DocumentedHandler<T, S>, T: 'static>(self, handler: H) -> Self {
         let mut docs = self.docs;
-        docs.insert(PathItemType::Delete, handler.extract_docs());
+        docs.insert(PathItemType::Delete, handler.extract_docs().into());
         
         Self {
             docs,

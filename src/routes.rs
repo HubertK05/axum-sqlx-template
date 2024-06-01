@@ -15,9 +15,9 @@ use std::{net::SocketAddr, time::Duration};
 const SWAGGER_URI: &str = "/swagger-ui";
 
 pub fn app(app_state: AppState) -> Router {
-    let (documented_router, docs) = DocumentedRouter::<()>::new()
+    let (documented_router, docs) = DocumentedRouter::<()>::new("template", "0.1.0")
         .route("/", MyMethodRouter::new().get(home_page))
-        .finish_doc("template", "0.1.0");
+        .finish_doc();
 
     let mut router: Router<AppState> = Router::new();
 
