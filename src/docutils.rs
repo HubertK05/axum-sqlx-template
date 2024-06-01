@@ -2,7 +2,7 @@ use std::{collections::{BTreeMap, HashMap}, marker::PhantomData, sync::Arc};
 
 use axum::{async_trait, extract::{Path, Query}, handler::Handler, response::IntoResponse, routing::MethodRouter, Json, Router};
 use regex::Regex;
-use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn}, request_body::RequestBody, Content, Info, OpenApi, PathItem, PathItemType, PathsBuilder}, IntoParams, ToSchema};
+use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn}, request_body::RequestBody, Components, Content, Info, OpenApi, PathItem, PathItemType, PathsBuilder, Ref, RefOr, Schema}, IntoParams, ToSchema};
 
 pub trait DocumentedHandler<T, S> {
     fn extract_docs(&self) -> Vec<RequestPart>;
@@ -59,14 +59,14 @@ pub trait DocExtractor {
     fn to_open_api() -> RequestPart;
 }
 
-impl<T> DocExtractor for Path<T>
+impl<'a, T> DocExtractor for Path<T>
 where T: IntoParams {
     fn to_open_api() -> RequestPart {
         RequestPart::Params(T::into_params(|| { Some(ParameterIn::Path) }))
     }
 }
 
-impl<T> DocExtractor for Query<T>
+impl<'a, T> DocExtractor for Query<T>
 where T: IntoParams {
     fn to_open_api() -> RequestPart {
         RequestPart::Params(T::into_params(|| { Some(ParameterIn::Query) }))
@@ -76,19 +76,14 @@ where T: IntoParams {
 impl<'a, T> DocExtractor for Json<T>
 where T: ToSchema<'a> {
     fn to_open_api() -> RequestPart {
-        let mut body = RequestBody::new();
         let (name, schema) = T::schema();
-        let content = Content::new(schema);
-
-        body.content.insert(name.to_string(), content.clone());
-
-        RequestPart::Body(body)
+        RequestPart::Schema(name.to_string(), schema)
     }
 }
 
 pub enum RequestPart {
     Params(Vec<Parameter>),
-    Body(RequestBody),
+    Schema(String, RefOr<Schema>),
 }
 
 pub struct DocumentedRouter<S> {
@@ -156,10 +151,31 @@ where
                 continue;
             };
 
-            res.paths.paths.insert(path.clone(), PathItem::new(method, into_operation(handler_parts)));
+            let (operation, schemas) = into_operation(handler_parts);
+            res.paths.paths.insert(path.clone(), PathItem::new(method, operation));
+            if !schemas.is_empty() {
+                if let Some(ref mut components) = res.components {
+                    components.schemas.extend(schemas.into_iter());
+                } else {
+                    let mut components = Components::new();
+                    components.schemas.extend(schemas.into_iter());
+                    res.components = Some(components);
+                }
+            }
 
             for (method, handler_parts) in path_spec {
-                res.paths.paths.get_mut(&path).unwrap().operations.insert(method, into_operation(handler_parts));
+                let (operation, schemas) = into_operation(handler_parts);
+                res.paths.paths.get_mut(&path).unwrap().operations.insert(method, operation);
+                
+                if !schemas.is_empty() {
+                    if let Some(ref mut components) = res.components {
+                        components.schemas.extend(schemas.into_iter());
+                    } else {
+                        let mut components = Components::new();
+                        components.schemas.extend(schemas.into_iter());
+                        res.components = Some(components);
+                    }
+                }
             }
         }
 
@@ -167,11 +183,17 @@ where
     }
 }
 
-pub fn into_operation(handler_parts: Vec<RequestPart>) -> Operation {
+pub fn into_operation(handler_parts: Vec<RequestPart>) -> (Operation, Vec<(String, RefOr<Schema>)>) {
     let mut handler = Operation::new();
+    let mut schemas = Vec::new();
     for elem in handler_parts {
         match elem {
-            RequestPart::Body(body) => handler.request_body = Some(body),
+            RequestPart::Schema(name, schema) => {
+                let mut request = RequestBody::new();
+                request.content.insert(name.to_string(), Content::new(RefOr::Ref(Ref::from_schema_name(name.clone()))));
+                handler.request_body = Some(request);
+                schemas.push((name, schema));
+            },
             RequestPart::Params(params) => {
                 let mut temp_vec = handler.parameters.unwrap_or_default();
                 temp_vec.extend(params.into_iter());
@@ -180,7 +202,7 @@ pub fn into_operation(handler_parts: Vec<RequestPart>) -> Operation {
         }
     }
 
-    handler
+    (handler, schemas)
 }
 
 pub fn into_document_form(path: &str) -> String {
