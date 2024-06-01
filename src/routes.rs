@@ -15,7 +15,7 @@ const SWAGGER_URI: &str = "/swagger-ui";
 
 pub fn app(app_state: AppState) -> Router {
     let (mut documented_router, docs) = DocRouter::new("template", "0.1.0")
-        .route("/", get(home_page).post(home_page))
+        .route("/", get(home_page))
         .finish_doc();
 
     if app_state.env().is_dev() {
