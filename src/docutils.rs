@@ -177,14 +177,14 @@ impl From<AppDocs> for OpenApi {
     }
 }
 
-struct PathDocs(HashMap<PathItemType, HandlerData>);
+struct PathDocs(HashMap<PathItemType, HandlerDocs>);
 
 impl PathDocs {
     fn new() -> Self {
         Self(HashMap::new())
     }
 
-    fn insert(&mut self, method: PathItemType, handler_data: HandlerData) -> Option<HandlerData> {
+    fn insert(&mut self, method: PathItemType, handler_data: HandlerDocs) -> Option<HandlerDocs> {
         self.0.insert(method, handler_data)
     }
 
@@ -206,12 +206,12 @@ impl PathDocs {
     }
 }
 
-struct HandlerData {
+struct HandlerDocs {
     params: Vec<Parameter>,
     schema: Option<(String, ContentType, RefOr<Schema>)>,
 }
 
-impl HandlerData {
+impl HandlerDocs {
     fn new() -> Self {
         Self {
             params: Vec::new(),
@@ -233,9 +233,9 @@ impl HandlerData {
     }
 }
 
-impl From<Vec<RequestPart>> for HandlerData {
+impl From<Vec<RequestPart>> for HandlerDocs {
     fn from(val: Vec<RequestPart>) -> Self {
-        let mut res = HandlerData::new();
+        let mut res = HandlerDocs::new();
 
         for elem in val {
             match elem {
