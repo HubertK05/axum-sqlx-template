@@ -221,7 +221,11 @@ impl HandlerDocs {
 
     fn collect(self) -> (Operation, Option<(String, RefOr<Schema>)>) {
         let mut res = Operation::new();
-        res.parameters = Some(self.params);
+
+        if !self.params.is_empty() {
+            res.parameters = Some(self.params);
+        }
+        
         res.request_body = self
             .schema
             .as_ref()
