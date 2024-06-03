@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::{collections::{BTreeMap, HashMap}, fmt::Display};
 
 use axum::{extract::{Path, Query}, handler::Handler, routing::MethodRouter, Json, Router};
 use regex::Regex;
@@ -112,13 +112,28 @@ impl<'a, T> DocExtractor for Json<T>
 where T: ToSchema<'a> {
     fn to_open_api() -> RequestPart {
         let (name, schema) = T::schema();
-        RequestPart::Schema(name.to_string(), schema)
+        RequestPart::Schema(name.to_string(), ContentType::Json, schema)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum ContentType {
+    Json,
+}
+
+impl Display for ContentType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            ContentType::Json => "application/json",
+        };
+
+        write!(f, "{s}")
     }
 }
 
 pub enum RequestPart {
     Params(Vec<Parameter>),
-    Schema(String, RefOr<Schema>),
+    Schema(String, ContentType, RefOr<Schema>),
 }
 
 struct AppDocs<'a> {
@@ -136,8 +151,8 @@ impl<'a> AppDocs<'a> {
         }
     }
 
-    fn insert_path(&mut self, path: String, path_docs: PathDocs) -> Option<PathDocs> {
-        self.paths.insert(path, path_docs)
+    fn insert_path(&mut self, path: impl Into<String>, path_docs: PathDocs) -> Option<PathDocs> {
+        self.paths.insert(path.into(), path_docs)
     }
 }
 
@@ -193,7 +208,7 @@ impl PathDocs {
 
 struct HandlerData {
     params: Vec<Parameter>,
-    schema: Option<(String, RefOr<Schema>)>,
+    schema: Option<(String, ContentType, RefOr<Schema>)>,
 }
 
 impl HandlerData {
@@ -207,14 +222,16 @@ impl HandlerData {
     fn collect(self) -> (Operation, Option<(String, RefOr<Schema>)>) {
         let mut res = Operation::new();
         res.parameters = Some(self.params);
-        if let Some((ref schema_name, _)) = self.schema {
+        if let Some((ref schema_name, content_type, _)) = self.schema {
             let mut body = RequestBody::new();
             let content = Content::new(RefOr::Ref(Ref::from_schema_name(schema_name.clone())));
-            body.content = BTreeMap::from([(schema_name.clone(), content)]);
+            body.content = BTreeMap::from([(content_type.to_string(), content)]);
             res.request_body = Some(body);
         }
+
+        let schema_without_content_type = self.schema.map(|x| (x.0, x.2));
         
-        (res, self.schema)
+        (res, schema_without_content_type)
     }
 }
 
@@ -225,8 +242,8 @@ impl From<Vec<RequestPart>> for HandlerData {
         for elem in val {
             match elem {
                 RequestPart::Params(params) => res.params.extend(params),
-                RequestPart::Schema(name, schema) => {
-                    res.schema = Some((name, schema));
+                RequestPart::Schema(name, content_type, schema) => {
+                    res.schema = Some((name, content_type, schema));
                 },
             }
         }
