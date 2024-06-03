@@ -222,12 +222,10 @@ impl HandlerData {
     fn collect(self) -> (Operation, Option<(String, RefOr<Schema>)>) {
         let mut res = Operation::new();
         res.parameters = Some(self.params);
-        if let Some((ref schema_name, content_type, _)) = self.schema {
-            let mut body = RequestBody::new();
-            let content = Content::new(RefOr::Ref(Ref::from_schema_name(schema_name.clone())));
-            body.content = BTreeMap::from([(content_type.to_string(), content)]);
-            res.request_body = Some(body);
-        }
+        res.request_body = self
+            .schema
+            .as_ref()
+            .map(|(name, content_type, _)| to_req_body(name, *content_type));
 
         let schema_without_content_type = self.schema.map(|x| (x.0, x.2));
         
@@ -250,6 +248,13 @@ impl From<Vec<RequestPart>> for HandlerData {
         
         res
     }
+}
+
+fn to_req_body(schema_name: impl Into<String>, content_type: ContentType) -> RequestBody {
+    let mut body = RequestBody::new();
+    let content = Content::new(RefOr::Ref(Ref::from_schema_name(schema_name.into())));
+    body.content = BTreeMap::from([(content_type.to_string(), content)]);
+    body
 }
 
 pub struct DocRouter<'a, S> {
