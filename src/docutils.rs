@@ -136,17 +136,17 @@ pub enum RequestPart {
     Schema(String, ContentType, RefOr<Schema>),
 }
 
-struct AppDocs<'a> {
-    app_name: &'a str,
-    version: &'a str,
+struct AppDocs {
+    app_name: String,
+    version: String,
     paths: HashMap<String, PathDocs>,
 }
 
-impl<'a> AppDocs<'a> {
-    fn new(app_name: &'a str, version: &'a str) -> Self {
+impl AppDocs {
+    fn new(app_name: &str, version: &str) -> Self {
         Self {
-            app_name,
-            version,
+            app_name: app_name.into(),
+            version: version.into(),
             paths: HashMap::new(),
         }
     }
@@ -156,7 +156,7 @@ impl<'a> AppDocs<'a> {
     }
 }
 
-impl<'a> From<AppDocs<'a>> for OpenApi {
+impl From<AppDocs> for OpenApi {
     fn from(val: AppDocs) -> Self {
         let mut res = OpenApi::new(Info::new(val.app_name, val.version), Paths::new());
 
@@ -257,15 +257,15 @@ fn to_req_body(schema_name: impl Into<String>, content_type: ContentType) -> Req
     body
 }
 
-pub struct DocRouter<'a, S> {
-    docs: AppDocs<'a>,
+pub struct DocRouter<S> {
+    docs: AppDocs,
     router: Router<S>,
 }
 
-impl<'a, S> DocRouter<'a, S>
+impl<S> DocRouter<S>
 where
     S: Clone + Send + Sync + 'static {
-    pub fn new(app_name: &'a str, version: &'a str) -> Self {
+    pub fn new(app_name: &str, version: &str) -> Self {
         Self {
             docs: AppDocs::new(app_name, version),
             router: Router::new(),
@@ -284,7 +284,7 @@ where
 
     pub fn merge<R>(self, other: R) -> Self
     where
-        R: Into<DocRouter<'a, S>> {
+        R: Into<DocRouter<S>> {
         let DocRouter { docs: other_docs, router: other_router } = other.into();
         let mut docs = self.docs;
         other_docs.paths.into_iter().for_each(|(uri, path_spec)| {
