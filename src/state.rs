@@ -4,9 +4,12 @@ use reqwest::Client;
 use serde::de::Visitor;
 use serde::Deserialize;
 use sqlx::migrate::Migrator;
-use sqlx::PgPool;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use sqlx::{ConnectOptions, PgPool};
 use std::fmt::Display;
-
+use std::str::FromStr;
+use std::time::Duration;
+use tracing::log::LevelFilter;
 use crate::config::Configuration;
 use crate::errors::AppError;
 // use crate::extensions::mail::Mailer;
@@ -27,7 +30,16 @@ static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 impl AppState {
     pub async fn new(config: &Configuration) -> Self {
-        let db = PgPool::connect(&config.database_url).await.unwrap();
+        let connection_options = PgConnectOptions::from_str(&config.database_url)
+        .unwrap()
+        .log_statements(LevelFilter::Trace)
+        .log_slow_statements(LevelFilter::Warn, Duration::from_secs(1));
+
+        let db = PgPoolOptions::new().connect_with(
+            connection_options
+        )
+        .await
+        .unwrap();
 
         if config.environment.is_prod() {
             MIGRATOR.run(&db).await.expect("failed to run migrations");
