@@ -3,6 +3,7 @@ pub mod errors;
 pub mod routes;
 pub mod setup;
 pub mod state;
+mod miscutil;
 
 use config::load_config;
 use listenfd::ListenFd;
@@ -37,7 +38,7 @@ async fn main() {
 
     let router = routes::app(app_state);
 
-    info!("listening on {}", &addr);
+    info!("listening on http://{}", &addr);
 
     axum::serve(
         listener,
@@ -71,3 +72,4 @@ async fn shutdown_signal() {
         _ = terminate => {},
     }
 }
+
