@@ -32,7 +32,7 @@ macro_rules! params_vec {
 #[macro_export]
 macro_rules! log_query_as {
     ($model:ty, $query:expr, $($sigil:tt $param:tt),*) => {{
-        let params: Vec<String> = params_vec!({} $($sigil $param),*);
+        let params: Vec<String> = $crate::params_vec!({} $($sigil $param),*);
 
         let formatted_query = {
             let mut query = $query.to_string();
@@ -47,12 +47,20 @@ macro_rules! log_query_as {
 
         sqlx::query_as!($model, $query, $($param),*)
     }};
+    
+    ($model:ty, $query:expr) => {{
+        let formatted_query = $query.to_string();
+
+        trace!("Executing query: {}", formatted_query);
+
+        sqlx::query_as!($model, $query)
+    }};
 }
 
 #[macro_export]
 macro_rules! log_query {
     ($query:expr, $($sigil:tt $param:tt),*) => {{
-        let params: Vec<String> = params_vec!({} $($sigil $param),*);
+        let params: Vec<String> = $crate::params_vec!({} $($sigil $param),*);
 
         let formatted_query = {
             let mut query = $query.to_string();
@@ -66,6 +74,14 @@ macro_rules! log_query {
         trace!("Executing query: {}", formatted_query);
 
         sqlx::query!($query, $($param),*)
+    }};
+    
+    ($query:expr) => {{
+        let formatted_query = $query.to_string();
+
+        trace!("Executing query: {}", formatted_query);
+
+        sqlx::query!($query)
     }};
 }
 

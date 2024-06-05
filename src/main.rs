@@ -1,6 +1,5 @@
 pub mod config;
 pub mod errors;
-pub mod macros;
 mod miscutils;
 pub mod routes;
 pub mod setup;
@@ -12,6 +11,9 @@ use setup::setup_globals;
 use state::AppState;
 use tokio::net::TcpListener;
 use tokio::signal;
+
+#[macro_use]
+pub mod macros;
 
 #[macro_use]
 pub extern crate tracing;
