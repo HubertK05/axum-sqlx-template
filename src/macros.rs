@@ -1,4 +1,5 @@
 #[allow(unused_macros)]
+#[macro_export]
 macro_rules! params_vec {
     ({$($out:expr),*}) => {
         vec![$($out),*]

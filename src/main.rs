@@ -1,3 +1,6 @@
+#[macro_use]
+mod macros;
+
 pub mod config;
 pub mod errors;
 mod miscutils;
@@ -11,9 +14,6 @@ use setup::setup_globals;
 use state::AppState;
 use tokio::net::TcpListener;
 use tokio::signal;
-
-#[macro_use]
-pub mod macros;
 
 #[macro_use]
 pub extern crate tracing;
