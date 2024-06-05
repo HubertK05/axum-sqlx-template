@@ -1,8 +1,8 @@
-use std::convert::Infallible;
-use std::net::IpAddr;
 use axum::async_trait;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
+use std::convert::Infallible;
+use std::net::IpAddr;
 
 #[derive(Debug)]
 pub struct ForwardedFor(Vec<IpAddr>);
@@ -15,15 +15,14 @@ impl ForwardedFor {
             .collect()
     }
 
-
     pub fn client_ip(&self) -> Option<&IpAddr> {
         self.0.first()
     }
 }
 #[async_trait]
 impl<S> FromRequestParts<S> for ForwardedFor
-    where
-        S: Send + Sync,
+where
+    S: Send + Sync,
 {
     type Rejection = Infallible;
 

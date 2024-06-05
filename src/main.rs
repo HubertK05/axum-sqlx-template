@@ -1,9 +1,10 @@
 pub mod config;
 pub mod errors;
+mod miscutils;
+mod oauth;
 pub mod routes;
 pub mod setup;
 pub mod state;
-mod miscutil;
 
 use config::load_config;
 use listenfd::ListenFd;
@@ -37,8 +38,8 @@ async fn main() {
     info!("Environment: {}", app_state.env());
 
     let router = routes::app(app_state);
-
-    info!("listening on http://{}", &addr);
+    
+    info!("listening on {} with domain at {}", &addr, &config.public_domain);
 
     axum::serve(
         listener,
@@ -72,4 +73,3 @@ async fn shutdown_signal() {
         _ = terminate => {},
     }
 }
-
