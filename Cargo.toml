@@ -22,3 +22,6 @@ tower-http = { version = "0.5.2", features = ["cors", "trace"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 typeshare = "1.0.3"
+
+[dev-dependencies]
+rstest = "0.21.0"
