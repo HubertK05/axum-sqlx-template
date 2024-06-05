@@ -1,7 +1,9 @@
+use crate::config::Configuration;
+use crate::errors::AppError;
 use anyhow::anyhow;
 use axum::extract::FromRef;
 use reqwest::Client;
-use serde::de::Visitor;
+use serde::de::{Error, Visitor};
 use serde::Deserialize;
 use sqlx::migrate::Migrator;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -10,8 +12,6 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::time::Duration;
 use tracing::log::LevelFilter;
-use crate::config::Configuration;
-use crate::errors::AppError;
 // use crate::extensions::mail::Mailer;
 // use crate::extensions::oauth2::OAuth;
 // use crate::extensions::verification::Verification;
@@ -31,15 +31,14 @@ static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 impl AppState {
     pub async fn new(config: &Configuration) -> Self {
         let connection_options = PgConnectOptions::from_str(&config.database_url)
-        .unwrap()
-        .log_statements(LevelFilter::Trace)
-        .log_slow_statements(LevelFilter::Warn, Duration::from_secs(1));
+            .unwrap()
+            .log_statements(LevelFilter::Trace)
+            .log_slow_statements(LevelFilter::Warn, Duration::from_secs(1));
 
-        let db = PgPoolOptions::new().connect_with(
-            connection_options
-        )
-        .await
-        .unwrap();
+        let db = PgPoolOptions::new()
+            .connect_with(connection_options)
+            .await
+            .unwrap();
 
         if config.environment.is_prod() {
             MIGRATOR.run(&db).await.expect("failed to run migrations");
@@ -83,16 +82,22 @@ impl<'de> Visitor<'de> for EnvironmentVisitor {
     type Value = Environment;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("`dev` or `development` to specify development environment, and `prod` or `production` to specify production environment.")
+        write!(formatter, "`dev` or `development` to specify development environment, and `prod` or `production` to specify production environment.")
     }
 
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        v.try_into()
+            .map_err(|_| E::invalid_value(serde::de::Unexpected::Str(&v), &self))
+    }
+    
     fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        v.as_str()
-            .try_into()
-            .map_err(|_| E::invalid_value(serde::de::Unexpected::Str(&v), &self))
+        self.visit_str(&v)
     }
 }
 impl<'de> Deserialize<'de> for Environment {

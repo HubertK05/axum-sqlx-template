@@ -1,2 +1,3 @@
 database_url = "postgres://localhost/axum_template"
 address = "127.0.0.1:3000" # optional
+public_domain = "https://my-app.up.railway.app" # optional
