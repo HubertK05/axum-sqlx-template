@@ -1,7 +1,7 @@
 pub mod config;
 pub mod errors;
+pub mod macros;
 mod miscutils;
-mod oauth;
 pub mod routes;
 pub mod setup;
 pub mod state;
