@@ -4,10 +4,10 @@ mod macros;
 pub mod config;
 pub mod errors;
 mod miscutils;
+pub mod oauth;
 pub mod routes;
 pub mod setup;
 pub mod state;
-
 use config::load_config;
 use listenfd::ListenFd;
 use setup::setup_globals;
@@ -40,8 +40,11 @@ async fn main() {
     info!("Environment: {}", app_state.env());
 
     let router = routes::app(app_state);
-    
-    info!("listening on {} with domain at {}", &addr, &config.public_domain);
+
+    info!(
+        "listening on {} with domain at {}",
+        &addr, &config.public_domain
+    );
 
     axum::serve(
         listener,

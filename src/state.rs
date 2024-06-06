@@ -1,5 +1,6 @@
 use crate::config::Configuration;
 use crate::errors::AppError;
+use crate::oauth::OAuthClients;
 use anyhow::anyhow;
 use axum::extract::FromRef;
 use reqwest::Client;
@@ -20,13 +21,15 @@ use tracing::log::LevelFilter;
 pub struct AppState {
     db: PgPool,
     client: Client,
-    // oauth: Option<OAuth>,
+    oauth: OAuthClients,
     // verification: Verification,
     // mailer: Mailer,
     environment: Environment,
 }
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
+
+static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
 impl AppState {
     pub async fn new(config: &Configuration) -> Self {
@@ -44,12 +47,9 @@ impl AppState {
             MIGRATOR.run(&db).await.expect("failed to run migrations");
         };
 
-        let client = Client::new();
+        let client = Client::builder().user_agent(APP_USER_AGENT).build().unwrap();
 
-        // let oauth = env::var("OAUTH")
-        //     .map(|v| v.parse::<bool>().unwrap_or_default())
-        //     .unwrap_or_default()
-        //     .then_some(OAuth::new());
+        let oauth = OAuthClients::new(client.clone(), &config.oauth, &config.public_domain);
 
         // let verification = Verification::new();
 
@@ -58,7 +58,7 @@ impl AppState {
         Self {
             db,
             client,
-            // oauth,
+            oauth,
             // verification,
             // mailer,
             environment: config.environment,
@@ -92,7 +92,7 @@ impl<'de> Visitor<'de> for EnvironmentVisitor {
         v.try_into()
             .map_err(|_| E::invalid_value(serde::de::Unexpected::Str(&v), &self))
     }
-    
+
     fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
     where
         E: serde::de::Error,

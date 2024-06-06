@@ -1,4 +1,4 @@
-use crate::errors::AppError::Unexpected;
+use crate::oauth::AuthProvider;
 use anyhow::{bail, Context};
 use axum::http::uri::{PathAndQuery, Scheme};
 use axum::http::Uri;
@@ -12,6 +12,7 @@ use std::{
     env::{var, vars},
     net::{IpAddr, Ipv4Addr, SocketAddr},
 };
+use oauth2::{ClientId, ClientSecret};
 
 use crate::state::Environment;
 const ADDRESS: &str = "ADDRESS";
@@ -26,6 +27,34 @@ pub struct Configuration {
     pub address: SocketAddr,
     pub database_url: String,
     pub public_domain: AbsoluteUri,
+    pub oauth: OAuthConfiguration,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OAuthAccess {
+    pub id: ClientId,
+    pub secret: ClientSecret,
+}
+
+impl OAuthAccess {
+    fn from_env(provider: AuthProvider) -> Self {
+        let provider = provider.to_string().to_uppercase();
+        let id = ClientId::new(var(format!("{provider}_CLIENT_ID")).unwrap());
+        let secret = ClientSecret::new(var(format!("{provider}_CLIENT_SECRET")).unwrap());
+        Self { id, secret }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OAuthConfiguration {
+    pub is_enabled: bool,
+    pub github: OAuthAccess,
+}
+
+impl OAuthConfiguration {
+    fn from_env() -> Self {
+        Self {is_enabled: true, github: OAuthAccess::from_env(AuthProvider::Github)}
+    }
 }
 
 impl Configuration {
@@ -56,11 +85,14 @@ impl Configuration {
             .parse()
             .expect("Invalid URI format for PUBLIC_DOMAIN");
 
+        let oauth: OAuthConfiguration = OAuthConfiguration::from_env();
+
         Self {
             environment,
             address,
             database_url,
             public_domain,
+            oauth,
         }
     }
 
@@ -83,11 +115,14 @@ impl Configuration {
             }
         });
 
+        let oauth: OAuthConfiguration = config.get("oauth").unwrap();
+
         Self {
             environment,
             address,
             database_url,
             public_domain,
+            oauth
         }
     }
 }
@@ -113,11 +148,22 @@ pub struct AbsoluteUri(Uri);
 
 impl AbsoluteUri {
     fn from_addr(addr: &SocketAddr) -> Self {
-        Self(Uri::builder().scheme(Scheme::HTTP).authority(addr.to_string()).path_and_query("/").build().unwrap())
+        Self(
+            Uri::builder()
+                .scheme(Scheme::HTTP)
+                .authority(addr.to_string())
+                .path_and_query("/")
+                .build()
+                .unwrap(),
+        )
     }
 
     fn domain(&self) -> String {
-        format!("{}://{}", self.0.scheme_str().unwrap(), self.0.authority().unwrap())
+        format!(
+            "{}://{}",
+            self.0.scheme_str().unwrap(),
+            self.0.authority().unwrap()
+        )
     }
 }
 
@@ -130,7 +176,7 @@ impl TryFrom<Uri> for AbsoluteUri {
         };
         match scheme {
             "http" | "https" => (),
-            _ => bail!("invalid URI protocol, expected http or https")
+            _ => bail!("invalid URI protocol, expected http or https"),
         }
         Ok(Self(value))
     }
