@@ -16,10 +16,12 @@ use tracing::log::LevelFilter;
 // use crate::extensions::mail::Mailer;
 // use crate::extensions::oauth2::OAuth;
 // use crate::extensions::verification::Verification;
+pub type RdPool = redis::aio::ConnectionManager;
 
 #[derive(FromRef, Clone)]
 pub struct AppState {
     db: PgPool,
+    redis: RdPool,
     client: Client,
     oauth: OAuthClients,
     // verification: Verification,
@@ -45,18 +47,21 @@ impl AppState {
 
         if config.environment.is_prod() {
             MIGRATOR.run(&db).await.expect("failed to run migrations");
+            info!("Migration applied")
         };
 
         let client = Client::builder().user_agent(APP_USER_AGENT).build().unwrap();
 
         let oauth = OAuthClients::new(client.clone(), &config.oauth, &config.public_domain);
 
+        let redis = redis::Client::open(config.redis_url.to_string()).unwrap().get_connection_manager().await.unwrap();
         // let verification = Verification::new();
 
         // let mailer = Mailer::new(frontend.url.clone());
 
         Self {
             db,
+            redis,
             client,
             oauth,
             // verification,

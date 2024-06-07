@@ -17,8 +17,9 @@ use oauth2::{ClientId, ClientSecret};
 use crate::state::Environment;
 const ADDRESS: &str = "ADDRESS";
 const DATABASE_URL: &str = "DATABASE_URL";
+const REDIS_URL: &str = "REDIS_URL";
 const PUBLIC_DOMAIN: &str = "PUBLIC_DOMAIN";
-const REQUIRED: &[&str] = &[ADDRESS, DATABASE_URL, PUBLIC_DOMAIN];
+const REQUIRED: &[&str] = &[ADDRESS, DATABASE_URL, PUBLIC_DOMAIN, REDIS_URL];
 const LOCAL_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 3000);
 
 #[derive(Debug)]
@@ -26,6 +27,7 @@ pub struct Configuration {
     pub environment: Environment,
     pub address: SocketAddr,
     pub database_url: String,
+    pub redis_url: String,
     pub public_domain: AbsoluteUri,
     pub oauth: OAuthConfiguration,
 }
@@ -78,7 +80,10 @@ impl Configuration {
             .unwrap()
             .parse()
             .expect("Invalid socket address");
+
         let database_url: String = var(DATABASE_URL).unwrap();
+
+        let redis_url: String = var(REDIS_URL).unwrap();
 
         let public_domain: AbsoluteUri = var(PUBLIC_DOMAIN)
             .unwrap()
@@ -91,6 +96,7 @@ impl Configuration {
             environment,
             address,
             database_url,
+            redis_url,
             public_domain,
             oauth,
         }
@@ -106,7 +112,9 @@ impl Configuration {
         });
 
         let database_url: String = config.get(DATABASE_URL).unwrap();
-
+        
+        let redis_url: String = config.get(REDIS_URL).unwrap();
+        
         let public_domain: AbsoluteUri = config.get(PUBLIC_DOMAIN).unwrap_or_else(|e| {
             if matches!(e, ConfigError::NotFound(_)) {
                 AbsoluteUri::from_addr(&address)
@@ -121,6 +129,7 @@ impl Configuration {
             environment,
             address,
             database_url,
+            redis_url,
             public_domain,
             oauth
         }
