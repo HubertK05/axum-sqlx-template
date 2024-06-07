@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.86"
+argon2 = "0.5.3"
 axum = { version = "0.7.5", features = ["tracing", "macros"] }
 axum-extra = { version = "0.9.3", features = ["cookie"] }
 config = "0.14.0"
