@@ -1,18 +1,23 @@
-use crate::{
-    errors::AppError,
-    state::AppState,
-};
-use axum::{
-    body::Body, extract::{ConnectInfo, State}, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, routing::get, Router
-};
-use reqwest::StatusCode;
+mod auth;
+
+use crate::{errors::AppError, state::AppState};
+use axum::{body::Body, extract::{ConnectInfo, State}, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, routing::get, Router, debug_handler};
+use reqwest::{Client, StatusCode};
+use std::{net::SocketAddr, time::Duration};
+use axum::extract::Query;
+use axum::routing::post;
+use oauth2::{AuthorizationCode, CsrfToken, TokenResponse};
+use oauth2::basic::BasicTokenResponse;
+use oauth2::url::Url;
+use serde::Deserialize;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
-use std::{net::SocketAddr, time::Duration};
+use crate::oauth::{OAuthClient, OAuthClients};
 // use utoipa::OpenApi;
 // use utoipa_swagger_ui::SwaggerUi;
 
 // const SWAGGER_URI: &str = "/swagger-ui";
+
 
 pub fn app(app_state: AppState) -> Router {
     let router: Router<AppState> = Router::new();
@@ -23,6 +28,7 @@ pub fn app(app_state: AppState) -> Router {
 
     router
         .route("/", get(home_page))
+        .nest("/auth", auth::router())
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<Body>| {

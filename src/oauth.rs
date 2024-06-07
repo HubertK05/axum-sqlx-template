@@ -19,6 +19,7 @@ use serde::Deserialize;
 use std::env;
 use std::fmt::{Display, Formatter};
 use axum::extract::FromRef;
+use redis::{RedisWrite, ToRedisArgs};
 use crate::oauth::github::GithubClient;
 
 type CustomOAuthClient = oauth2::Client<
@@ -46,6 +47,7 @@ impl OAuthClients {
 }
 
 #[derive(Type)]
+#[sqlx(type_name = "credential_provider", rename_all = "snake_case")]
 pub enum AuthProvider {
     Github,
     Google,
@@ -62,6 +64,12 @@ impl Display for AuthProvider {
             AuthProvider::Discord => "discord",
         };
         write!(f, "{provider}",)
+    }
+}
+
+impl ToRedisArgs for AuthProvider {
+    fn write_redis_args<W>(&self, out: &mut W) where W: ?Sized + RedisWrite {
+        out.write_arg_fmt(self);
     }
 }
 

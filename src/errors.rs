@@ -2,6 +2,9 @@ use anyhow::anyhow;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use oauth2::basic::{BasicErrorResponse, BasicErrorResponseType};
+use oauth2::{HttpClientError, RequestTokenError};
+use redis::RedisError;
 use serde::Serialize;
 use sqlx::error::{DatabaseError, ErrorKind};
 use sqlx::{query, Error, PgPool};
@@ -60,7 +63,25 @@ impl AppError {
 }
 
 impl From<sqlx::Error> for AppError {
-    fn from(val: Error) -> Self {
-        Self::Unexpected(anyhow!(val))
+    fn from(value: Error) -> Self {
+        Self::Unexpected(anyhow!(value))
+    }
+}
+
+impl From<RedisError> for AppError {
+    fn from(value: RedisError) -> Self {
+        Self::Unexpected(anyhow!(value))
+    }
+}
+
+impl From<reqwest::Error> for AppError {
+    fn from(value: reqwest::Error) -> Self {
+        Self::Unexpected(anyhow!(value))
+    }
+}
+
+impl From<RequestTokenError<HttpClientError<reqwest::Error>, BasicErrorResponse>> for AppError {
+    fn from(value: RequestTokenError<HttpClientError<reqwest::Error>, BasicErrorResponse>) -> Self {
+        Self::Unexpected(anyhow!(value))
     }
 }
