@@ -1,4 +1,4 @@
-use crate::errors::AppError;
+use crate::errors::{DbErrMap, AppError};
 use crate::state::RdPool;
 use crate::AppRouter;
 use argon2::password_hash::rand_core::OsRng;
@@ -41,6 +41,7 @@ async fn register(
     State(db): State<PgPool>,
     Json(body): Json<RegistrationForm>,
 ) -> crate::Result<impl IntoResponse> {
+    // TODO: check for session
     let entropy = zxcvbn::zxcvbn(&body.password, &[&body.login]);
     if let Some(feedback) = entropy.feedback() {
         let warning = feedback
@@ -52,11 +53,11 @@ async fn register(
             .map(|s| s.to_string())
             .collect::<Vec<String>>()
             .join(", ");
-        return Ok(Html(format!("Password is too weak: {warning}{suggestions}")).into_response());
+        return Err(AppError::exp(StatusCode::UNPROCESSABLE_ENTITY, format!("Password is too weak: {warning}{suggestions}")))
     }
 
     let password_hash = hash(body.password);
-    // TODO: check for session
+
     let user_id = query!(
         r#"
     INSERT INTO users (login, password)
@@ -67,12 +68,10 @@ async fn register(
         password_hash
     )
     .fetch_one(&db)
-    .await?
-    .id; // TODO: handle duplicate login error
+    .await.map_db_err(|e| e.unique(StatusCode::CONFLICT, "Login is not available"))?
+    .id;
 
-    let session_id = Uuid::new_v4();
-    rds.set_ex(format!("session:{session_id}"), user_id, 60 * 10)
-        .await?;
+    let session_id = ClientSession::set(&mut rds, &user_id).await?;
 
     Ok(SessionCookie::add(jar, &session_id).into_response())
 }
@@ -99,7 +98,7 @@ async fn login(
     .fetch_optional(&db)
     .await?
     .ok_or(AppError::exp(
-        StatusCode::UNAUTHORIZED,
+        StatusCode::FORBIDDEN,
         "Invalid credentials",
     ))
     .map(|r| (r.id, r.password))?;
@@ -112,15 +111,17 @@ async fn login(
         // here it is possible to return exact error but this information is helpful for both users and hackers
     }
     Err(AppError::exp(
-        StatusCode::UNAUTHORIZED,
+        StatusCode::FORBIDDEN,
         "Invalid login credentials",
     )) // precise cause of error is hidden from the end user
 }
 
 async fn logout(claims: Claims, State(mut rds): State<RdPool>) -> crate::Result<impl IntoResponse> {
+
     ClientSession::invalidate(&mut rds, &claims.session_id).await?;
     Ok(Html("Successfully logged out"))
 }
+
 async fn session(claims: Claims) -> crate::Result<impl IntoResponse> {
     Ok(Html(format!("{}", claims.user_id)))
 }
@@ -177,18 +178,18 @@ where
 
         let Some(cookie) = jar.get(SESSION_COOKIE_NAME) else {
             return Err(AppError::exp(
-                StatusCode::UNAUTHORIZED,
+                StatusCode::FORBIDDEN,
                 "Authentication required",
             ));
         };
 
         let session_id = Uuid::from_str(cookie.value()).map_err(|_| {
-            AppError::exp(StatusCode::UNAUTHORIZED, "Session id must be a valid UUID")
+            AppError::exp(StatusCode::FORBIDDEN, "Session id must be a valid UUID")
         })?;
 
         let mut rds = RdPool::from_ref(state);
         let Some(user_id): Option<Uuid> = ClientSession::get(&mut rds, &session_id).await? else {
-            return Err(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid session"));
+            return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid session"));
         };
 
         Ok(Self {

@@ -46,7 +46,7 @@ async fn handle_github_callback(
 ) -> crate::Result<impl IntoResponse> {
     let is_matched_state: bool = rds.del(RedisKey::csrf(&query.state)).await?;
     if !is_matched_state {
-        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Invalid CSRF state"));
+        return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid CSRF state"));
     }
     trace!("Matching CSRF state for {}", query.state.secret());
 
