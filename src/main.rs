@@ -8,6 +8,9 @@ pub mod oauth;
 pub mod routes;
 pub mod setup;
 pub mod state;
+
+use axum::response::IntoResponse;
+use axum::Router;
 use config::load_config;
 use listenfd::ListenFd;
 use setup::setup_globals;
@@ -17,8 +20,11 @@ use tokio::signal;
 
 #[macro_use]
 pub extern crate tracing;
+#[macro_use]
+pub extern crate sqlx;
 
-pub type Result<T, E = errors::AppError> = std::result::Result<T, E>;
+pub type Result<T: IntoResponse, E = errors::AppError> = std::result::Result<T, E>;
+pub type AppRouter = Router<AppState>;
 
 #[tokio::main]
 async fn main() {
