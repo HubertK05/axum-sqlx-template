@@ -37,9 +37,9 @@ pub fn app(app_state: AppState) -> Router {
         .with_state(app_state)
 }
 
-async fn home_page() -> impl IntoResponse {
+async fn home_page() -> Result<(StatusCode, Html<&'static str>), AppError> {
     trace!("Welcome to the API home page!");
-    (StatusCode::OK, Html("<h1>API home page</h1>"))
+    Ok((StatusCode::OK, Html("<h1>API home page</h1>")))
 }
 
 async fn not_found(
