@@ -29,9 +29,9 @@ macro_rules! impl_doc_handler {
         $($ty:ident),*
     ) => {
         #[allow(non_snake_case, unused_mut)]
-        impl<F, M, $($ty,)* S, Fut, R, E> DocHandler<(M, $($ty,)*), S> for F
+        impl<F, M, $($ty),*, S, Fut, R, E> DocHandler<(M, $($ty),*), S> for F
         where
-            F: Handler<(M, $($ty,)*), S> + FnOnce(((), )) -> Fut,
+            F: Handler<(M, $($ty),*), S> + FnOnce($($ty),*) -> Fut,
             Fut: Future<Output = Result<(StatusCode, R), E>>,
             R: IntoResponse + DocResponse,
             $( $ty: DocExtractor, )*
@@ -52,40 +52,32 @@ macro_rules! impl_doc_handler {
 }
 
 macro_rules! impl_method_router {
-    (
-        $($ty:ident, $en:ident)*
-    ) => {
-        $(
-            pub fn $ty<H: Handler<T, S> + DocHandler<T, S>, T: 'static>(self, handler: H) -> Self {
-                let mut docs = self.docs;
-                docs.insert(PathItemType::$en, HandlerDocs::from_signature(handler.clone()));
-                
-                Self {
-                    docs,
-                    curr_method: PathItemType::$en,
-                    method_router: self.method_router.$ty(handler)
-                }
+    ($ty:ident, $en:ident) => {
+        pub fn $ty<H: Handler<T, S> + DocHandler<T, S>, T: 'static>(self, handler: H) -> Self {
+            let mut docs = self.docs;
+            docs.insert(PathItemType::$en, HandlerDocs::from_signature(handler.clone()));
+            
+            Self {
+                docs,
+                curr_method: PathItemType::$en,
+                method_router: self.method_router.$ty(handler)
             }
-        )*
+        }
     }
 }
 
 macro_rules! impl_method_router_start {
-    (
-        $($ty:ident, $en:ident)*
-    ) => {
-        $(
-            pub fn $ty<H: Handler<T, S> + DocHandler<T, S>, T: 'static, S: Clone + Send + Sync + 'static>(handler: H) -> DocMethodRouter<S> {
-                let mut docs = PathDocs::new();
-                docs.insert(PathItemType::$en, HandlerDocs::from_signature(handler.clone()));
-                
-                DocMethodRouter {
-                    docs,
-                    curr_method: PathItemType::$en,
-                    method_router: axum::routing::$ty(handler)
-                }
+    ($ty:ident, $en:ident) => {
+        pub fn $ty<H: Handler<T, S> + DocHandler<T, S>, T: 'static, S: Clone + Send + Sync + 'static>(handler: H) -> DocMethodRouter<S> {
+            let mut docs = PathDocs::new();
+            docs.insert(PathItemType::$en, HandlerDocs::from_signature(handler.clone()));
+            
+            DocMethodRouter {
+                docs,
+                curr_method: PathItemType::$en,
+                method_router: axum::routing::$ty(handler)
             }
-        )*
+        }
     }
 }
 
