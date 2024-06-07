@@ -26,6 +26,7 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 typeshare = "1.0.3"
 uuid = { version = "1.8.0", features = ["v4"] }
+zxcvbn = "3.0.1"
 
 [dev-dependencies]
 rstest = "0.21.0"
