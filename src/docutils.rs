@@ -1,19 +1,27 @@
-use std::{collections::{BTreeMap, HashMap}, fmt::Display};
+use std::{collections::{BTreeMap, HashMap}, fmt::Display, future::Future};
 
-use axum::{extract::{Path, Query}, handler::Handler, routing::MethodRouter, Json, Router};
+use axum::{extract::{Path, Query}, handler::Handler, response::{Html, IntoResponse}, routing::MethodRouter, Json, Router};
 use regex::Regex;
-use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn, PathItemBuilder}, request_body::RequestBody, Components, Content, Info, OpenApi, PathItem, PathItemType, Paths, Ref, RefOr, Schema}, IntoParams, ToSchema};
+use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn, PathItemBuilder}, request_body::RequestBody, Components, Content, Info, Object, ObjectBuilder, OneOf, OpenApi, PathItem, PathItemType, Paths, Ref, RefOr, Schema}, IntoParams, ToSchema};
+use axum::http::StatusCode;
 
 pub trait DocHandler<T, S> {
     fn extract_docs(&self) -> Vec<RequestPart>;
+    fn response_docs(&self) -> Option<(String, ContentType, RefOr<Schema>)>;
 }
 
-impl<F, S> DocHandler<((), ), S> for F
+impl<F, S, Fut, R, E> DocHandler<((), ), S> for F
 where
-    F: Handler<((), ), S> {
+    F: Handler<((), ), S> + FnOnce() -> Fut,
+    Fut: Future<Output = Result<R, E>>,
+    R: IntoResponse + DocResponse {
     fn extract_docs(&self) -> Vec<RequestPart> {
         vec![]
-    } 
+    }
+
+    fn response_docs(&self) -> Option<(String, ContentType, RefOr<Schema>)> {
+        R::doc_response()
+    }
 }
 
 macro_rules! impl_doc_handler {
@@ -21,17 +29,23 @@ macro_rules! impl_doc_handler {
         $($ty:ident),*
     ) => {
         #[allow(non_snake_case, unused_mut)]
-        impl<F, M, $($ty,)* S> DocHandler<(M, $($ty,)*), S> for F
+        impl<F, M, $($ty,)* S, Fut, R, E> DocHandler<(M, $($ty,)*), S> for F
         where
-            F: Handler<(M, $($ty,)*), S>,
+            F: Handler<(M, $($ty,)*), S> + FnOnce(((), )) -> Fut,
+            Fut: Future<Output = Result<(StatusCode, R), E>>,
+            R: IntoResponse + DocResponse,
             $( $ty: DocExtractor, )*
         {
             fn extract_docs(&self) -> Vec<RequestPart> {
                 vec![
                     $(
-                        $ty::to_open_api(),
+                        $ty::doc_extractor(),
                     )*
                 ]
+            }
+
+            fn response_docs(&self) -> Option<(String, ContentType, RefOr<Schema>)> {
+                R::doc_response()
             }
         }
     };
@@ -91,40 +105,74 @@ impl_doc_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T
 impl_doc_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16);
 
 pub trait DocExtractor {
-    fn to_open_api() -> RequestPart;
+    fn doc_extractor() -> RequestPart;
 }
 
 impl<'a, T> DocExtractor for Path<T>
 where T: IntoParams {
-    fn to_open_api() -> RequestPart {
+    fn doc_extractor() -> RequestPart {
         RequestPart::Params(T::into_params(|| { Some(ParameterIn::Path) }))
     }
 }
 
 impl<'a, T> DocExtractor for Query<T>
 where T: IntoParams {
-    fn to_open_api() -> RequestPart {
+    fn doc_extractor() -> RequestPart {
         RequestPart::Params(T::into_params(|| { Some(ParameterIn::Query) }))
     }
 }
 
 impl<'a, T> DocExtractor for Json<T>
 where T: ToSchema<'a> {
-    fn to_open_api() -> RequestPart {
+    fn doc_extractor() -> RequestPart {
         let (name, schema) = T::schema();
         RequestPart::Schema(name.to_string(), ContentType::Json, schema)
+    }
+}
+
+pub trait DocResponse {
+    fn doc_response() -> Option<(String, ContentType, RefOr<Schema>)>;
+}
+
+impl<'a, T> DocResponse for Json<T>
+where T: ToSchema<'a> {
+    fn doc_response() -> Option<(String, ContentType, RefOr<Schema>)> {
+        let (name, schema) = T::schema();
+        Some((name.to_string(), ContentType::Json, schema))
+    }
+}
+
+impl DocResponse for Html<&str> {
+    fn doc_response() -> Option<(String, ContentType, RefOr<Schema>)> {
+        let schema = Schema::Object(ObjectBuilder::new().schema_type(utoipa::openapi::SchemaType::String).build());
+
+        Some(("Html".to_string(), ContentType::Html, RefOr::T(schema)))
+    }
+}
+
+impl DocResponse for () {
+    fn doc_response() -> Option<(String, ContentType, RefOr<Schema>)> {
+        None
+    }
+}
+
+impl<T: DocResponse> DocResponse for (StatusCode, T) {
+    fn doc_response() -> Option<(String, ContentType, RefOr<Schema>)> {
+        T::doc_response()
     }
 }
 
 #[derive(Clone, Copy)]
 pub enum ContentType {
     Json,
+    Html,
 }
 
 impl Display for ContentType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             ContentType::Json => "application/json",
+            ContentType::Html => "text/html",
         };
 
         write!(f, "{s}")
