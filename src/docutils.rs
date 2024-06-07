@@ -58,7 +58,7 @@ macro_rules! impl_method_router {
         $(
             pub fn $ty<H: Handler<T, S> + DocHandler<T, S>, T: 'static>(self, handler: H) -> Self {
                 let mut docs = self.docs;
-                docs.insert(PathItemType::$en, handler.extract_docs().into());
+                docs.insert(PathItemType::$en, HandlerDocs::from_signature(handler.clone()));
                 
                 Self {
                     docs,
@@ -77,7 +77,7 @@ macro_rules! impl_method_router_start {
         $(
             pub fn $ty<H: Handler<T, S> + DocHandler<T, S>, T: 'static, S: Clone + Send + Sync + 'static>(handler: H) -> DocMethodRouter<S> {
                 let mut docs = PathDocs::new();
-                docs.insert(PathItemType::$en, handler.extract_docs().into());
+                docs.insert(PathItemType::$en, HandlerDocs::from_signature(handler.clone()));
                 
                 DocMethodRouter {
                     docs,
@@ -270,19 +270,34 @@ impl PathDocs {
 struct HandlerDocs {
     params: Vec<Parameter>,
     schema: Option<(String, ContentType, RefOr<Schema>)>,
+    response_schema: Option<(String, ContentType, RefOr<Schema>)>,
     response_metadata: Vec<ResponseMetadata>,
 }
 
 impl HandlerDocs {
-    fn new() -> Self {
-        Self {
+    fn from_signature<T, S>(handler: impl DocHandler<T, S>) -> Self {
+        let mut res = Self {
             params: Vec::new(),
             schema: None,
+            response_schema: None,
             response_metadata: Vec::new(),
+        };
+        
+        for elem in handler.extract_docs() {
+            match elem {
+                RequestPart::Params(params) => res.params.extend(params),
+                RequestPart::Schema(name, content_type, schema) => {
+                    res.schema = Some((name, content_type, schema));
+                },
+            }
         }
+
+        res.response_schema = handler.response_docs();
+
+        res
     }
 
-    fn collect(self) -> (Operation, Option<(String, RefOr<Schema>)>) {
+    fn collect(mut self) -> (Operation, Vec<(String, RefOr<Schema>)>) {
         let mut res = Operation::new();
 
         if !self.params.is_empty() {
@@ -293,27 +308,31 @@ impl HandlerDocs {
             .schema
             .as_ref()
             .map(|(name, content_type, _)| to_req_body(name, *content_type));
-
-        let schema_without_content_type = self.schema.map(|x| (x.0, x.2));
         
-        (res, schema_without_content_type)
-    }
-}
+        let mut schemas = Vec::new();
+        schemas.extend(self.schema.map(|x| (x.0, x.2)));
+        
+        if self.response_metadata.is_empty() && self.response_schema.is_none() {
+            return (res, schemas)
+        };
+        
+        self.response_metadata.reverse();
+        
+        let first_metadata = self.response_metadata.pop().unwrap_or(ResponseMetadata::default_success());
 
-impl From<Vec<RequestPart>> for HandlerDocs {
-    fn from(val: Vec<RequestPart>) -> Self {
-        let mut res = HandlerDocs::new();
-
-        for elem in val {
-            match elem {
-                RequestPart::Params(params) => res.params.extend(params),
-                RequestPart::Schema(name, content_type, schema) => {
-                    res.schema = Some((name, content_type, schema));
-                },
-            }
+        let first_response = match self.response_schema.as_ref() {
+            Some((schema_name, content_type, _)) => to_response(schema_name, *content_type, first_metadata.description),
+            None => Response::new(first_metadata.description),
+        };
+        
+        res.responses.responses.insert(first_metadata.status.as_u16().to_string(), RefOr::T(first_response));
+        while let Some(meta) = self.response_metadata.pop() {
+            res.responses.responses.insert(meta.status.as_u16().to_string(), RefOr::T(Response::new(meta.description)));
         }
         
-        res
+        schemas.extend(self.response_schema.map(|x| (x.0, x.2)));
+        
+        (res, schemas)
     }
 }
 
@@ -324,8 +343,8 @@ fn to_req_body(schema_name: impl Into<String>, content_type: ContentType) -> Req
     body
 }
 
-fn to_response(description: String, content_type: ContentType, schema: RefOr<Schema>) -> Response {
-    let content = Content::new(schema);
+fn to_response(schema_name: impl Into<String>, content_type: ContentType, description: String) -> Response {
+    let content = Content::new(RefOr::Ref(Ref::from_schema_name(schema_name.into())));
     ResponseBuilder::new().description(description).content(content_type.to_string(), content).build()
 }
 
@@ -410,6 +429,13 @@ pub struct ResponseMetadata {
 }
 
 impl ResponseMetadata {
+    pub fn default_success() -> Self {
+        ResponseMetadata {
+            status: StatusCode::OK,
+            description: "Successful response".to_string(),
+        }
+    }
+
     pub fn new(status: StatusCode, description: String) -> Self {
         Self {
             status,
