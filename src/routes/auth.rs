@@ -1,3 +1,4 @@
+use std::process::id;
 use crate::errors::AppError;
 use crate::errors::AppError::Expected;
 use crate::state::{AppState, RdPool};
@@ -13,8 +14,12 @@ use serde::Deserialize;
 use sqlx::types::Uuid;
 use sqlx::PgPool;
 use std::str::FromStr;
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use argon2::password_hash::rand_core::OsRng;
+use argon2::password_hash::SaltString;
 use axum::routing::{get, post};
 use axum_extra::extract::cookie::Cookie;
+use sqlx::error::{DatabaseError, ErrorKind};
 
 mod oauth;
 
@@ -38,6 +43,14 @@ async fn register(
     State(db): State<PgPool>,
     Json(body): Json<RegistrationForm>,
 ) -> crate::Result<impl IntoResponse> {
+    let entropy = zxcvbn::zxcvbn(&body.password, &[&body.login]);
+    if let Some(feedback) = entropy.feedback() {
+        let warning = feedback.warning().map_or(String::from("No warning. "), |w| w.to_string());
+        let suggestions = feedback.suggestions().into_iter().map(|s| s.to_string()).collect::<Vec<String>>().join(", ");
+        return Ok(Html(format!("Password is too weak: {warning}{suggestions}")).into_response());
+    }
+
+    let password_hash = hash(body.password);
     // TODO: check for session
     let user_id = query!(
         r#"
@@ -46,7 +59,7 @@ async fn register(
     RETURNING id
     "#,
         &body.login,
-        &body.password
+        password_hash
     )
     .fetch_one(&db)
     .await?
@@ -57,7 +70,7 @@ async fn register(
         .await?;
 
 
-    Ok(SessionCookie::add(jar, &session_id))
+    Ok(SessionCookie::add(jar, &session_id).into_response())
 }
 
 #[derive(Deserialize)]
@@ -72,25 +85,28 @@ async fn login(
     Json(body): Json<LoginForm>,
 ) -> crate::Result<impl IntoResponse> {
     // TODO: check for session
-    let user_id = query!(
+    let (user_id, password_hash) = query!(
         r#"
-    SELECT id FROM users
-    WHERE login = $1 AND password = $2
+    SELECT id, password FROM users
+    WHERE login = $1
     "#,
-        &body.login,
-        &body.password
+        &body.login
     )
     .fetch_optional(&db)
     .await?
     .ok_or(AppError::exp(
         StatusCode::UNAUTHORIZED,
         "Invalid credentials",
-    ))?
-    .id;
+    )).map(|r| (r.id, r.password))?;
 
-    let session_id = ClientSession::set(&mut rds, &user_id).await?;
-
-    Ok(SessionCookie::add(jar, &session_id))
+    if let Some(password_hash) = password_hash {
+        if is_correct_password(body.password, password_hash) {
+            let session_id = ClientSession::set(&mut rds, &user_id).await?;
+            return Ok(SessionCookie::add(jar, &session_id));
+        }
+        // here it is possible to return exact error but this information is helpful for both users and hackers
+    }
+    Err(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid login credentials")) // precise cause of error is hidden from the end user
 }
 
 async fn session(claims: Claims) -> crate::Result<impl IntoResponse> {
@@ -163,3 +179,15 @@ where
         })
     }
 }
+
+fn hash(password: String) -> String {
+    let salt = SaltString::generate(&mut OsRng);
+    let argon = Argon2::default();
+    argon.hash_password(password.as_bytes(), &salt).unwrap().to_string()
+}
+
+fn is_correct_password(password: String, password_hash: String) -> bool {
+    let parsed_hash = PasswordHash::new(&password_hash).unwrap();
+    Argon2::default().verify_password(password.as_bytes(), &parsed_hash).is_ok()
+}
+
