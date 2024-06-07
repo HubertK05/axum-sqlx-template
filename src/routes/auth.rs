@@ -1,25 +1,22 @@
-use std::process::id;
 use crate::errors::AppError;
-use crate::errors::AppError::Expected;
-use crate::state::{AppState, RdPool};
+use crate::state::RdPool;
 use crate::AppRouter;
+use argon2::password_hash::rand_core::OsRng;
+use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use axum::extract::{FromRef, FromRequestParts, State};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
+use axum::routing::{get, post};
 use axum::{async_trait, Json, RequestPartsExt, Router};
+use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
 use redis::{AsyncCommands, Expiry, RedisError};
 use serde::Deserialize;
 use sqlx::types::Uuid;
 use sqlx::PgPool;
 use std::str::FromStr;
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
-use argon2::password_hash::rand_core::OsRng;
-use argon2::password_hash::SaltString;
-use axum::routing::{get, post};
-use axum_extra::extract::cookie::Cookie;
-use sqlx::error::{DatabaseError, ErrorKind};
 
 mod oauth;
 
@@ -46,8 +43,15 @@ async fn register(
 ) -> crate::Result<impl IntoResponse> {
     let entropy = zxcvbn::zxcvbn(&body.password, &[&body.login]);
     if let Some(feedback) = entropy.feedback() {
-        let warning = feedback.warning().map_or(String::from("No warning. "), |w| w.to_string());
-        let suggestions = feedback.suggestions().into_iter().map(|s| s.to_string()).collect::<Vec<String>>().join(", ");
+        let warning = feedback
+            .warning()
+            .map_or(String::from("No warning. "), |w| w.to_string());
+        let suggestions = feedback
+            .suggestions()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>()
+            .join(", ");
         return Ok(Html(format!("Password is too weak: {warning}{suggestions}")).into_response());
     }
 
@@ -69,7 +73,6 @@ async fn register(
     let session_id = Uuid::new_v4();
     rds.set_ex(format!("session:{session_id}"), user_id, 60 * 10)
         .await?;
-
 
     Ok(SessionCookie::add(jar, &session_id).into_response())
 }
@@ -98,7 +101,8 @@ async fn login(
     .ok_or(AppError::exp(
         StatusCode::UNAUTHORIZED,
         "Invalid credentials",
-    )).map(|r| (r.id, r.password))?;
+    ))
+    .map(|r| (r.id, r.password))?;
 
     if let Some(password_hash) = password_hash {
         if is_correct_password(body.password, password_hash) {
@@ -107,7 +111,10 @@ async fn login(
         }
         // here it is possible to return exact error but this information is helpful for both users and hackers
     }
-    Err(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid login credentials")) // precise cause of error is hidden from the end user
+    Err(AppError::exp(
+        StatusCode::UNAUTHORIZED,
+        "Invalid login credentials",
+    )) // precise cause of error is hidden from the end user
 }
 
 async fn logout(claims: Claims, State(mut rds): State<RdPool>) -> crate::Result<impl IntoResponse> {
@@ -123,12 +130,13 @@ struct ClientSession;
 impl ClientSession {
     async fn set(rds: &mut RdPool, user_id: &Uuid) -> Result<Uuid, RedisError> {
         let session_id = Uuid::new_v4();
-        rds.set_ex(Self::key(&session_id), user_id, 60*10).await?;
+        rds.set_ex(Self::key(&session_id), user_id, 60 * 10).await?;
         Ok(session_id)
     }
 
     async fn get(rds: &mut RdPool, session_id: &Uuid) -> Result<Option<Uuid>, RedisError> {
-        let user_id: Option<Uuid> = rds.get_ex(Self::key(session_id), Expiry::EX(60 * 10))
+        let user_id: Option<Uuid> = rds
+            .get_ex(Self::key(session_id), Expiry::EX(60 * 10))
             .await?;
         Ok(user_id)
     }
@@ -137,7 +145,6 @@ impl ClientSession {
         rds.del(Self::key(session_id)).await?;
         Ok(())
     }
-
 
     fn key(session_id: &Uuid) -> String {
         format!("session:{session_id}")
@@ -194,11 +201,15 @@ where
 fn hash(password: String) -> String {
     let salt = SaltString::generate(&mut OsRng);
     let argon = Argon2::default();
-    argon.hash_password(password.as_bytes(), &salt).unwrap().to_string()
+    argon
+        .hash_password(password.as_bytes(), &salt)
+        .unwrap()
+        .to_string()
 }
 
 fn is_correct_password(password: String, password_hash: String) -> bool {
     let parsed_hash = PasswordHash::new(&password_hash).unwrap();
-    Argon2::default().verify_password(password.as_bytes(), &parsed_hash).is_ok()
+    Argon2::default()
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .is_ok()
 }
-

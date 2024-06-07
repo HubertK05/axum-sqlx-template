@@ -1,5 +1,6 @@
 mod auth;
 
+use std::time::Duration;
 use crate::{errors::AppError, state::AppState};
 use axum::{
     body::Body,
@@ -11,7 +12,6 @@ use axum::{
     Router,
 };
 
-use std::{net::SocketAddr, time::Duration};
 use axum::http::StatusCode;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
@@ -51,7 +51,7 @@ async fn home_page() -> impl IntoResponse {
 
 async fn not_found(
     uri: Uri,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
 ) -> Result<Redirect, AppError> {
     let msg = format!("Endpoint not found: {uri}");
     debug!("IP: {}", addr.ip());
