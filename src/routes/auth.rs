@@ -27,6 +27,7 @@ pub fn router() -> AppRouter {
     Router::new()
         .route("/register", post(register))
         .route("/login", post(login))
+        .route("/logout", post(logout))
         .route("/session", get(session))
         .nest("/oauth2", oauth::router())
 }
@@ -109,6 +110,10 @@ async fn login(
     Err(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid login credentials")) // precise cause of error is hidden from the end user
 }
 
+async fn logout(claims: Claims, State(mut rds): State<RdPool>) -> crate::Result<impl IntoResponse> {
+    ClientSession::invalidate(&mut rds, &claims.session_id).await?;
+    Ok(Html("Successfully logged out"))
+}
 async fn session(claims: Claims) -> crate::Result<impl IntoResponse> {
     Ok(Html(format!("{}", claims.user_id)))
 }
@@ -127,6 +132,12 @@ impl ClientSession {
             .await?;
         Ok(user_id)
     }
+
+    async fn invalidate(rds: &mut RdPool, session_id: &Uuid) -> Result<(), RedisError> {
+        rds.del(Self::key(session_id)).await?;
+        Ok(())
+    }
+
 
     fn key(session_id: &Uuid) -> String {
         format!("session:{session_id}")
