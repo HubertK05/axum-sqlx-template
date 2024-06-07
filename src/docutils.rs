@@ -2,7 +2,7 @@ use std::{collections::{BTreeMap, HashMap}, fmt::Display, future::Future};
 
 use axum::{extract::{Path, Query}, handler::Handler, response::{Html, IntoResponse}, routing::MethodRouter, Json, Router};
 use regex::Regex;
-use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn, PathItemBuilder}, request_body::RequestBody, Components, Content, Info, Object, ObjectBuilder, OneOf, OpenApi, PathItem, PathItemType, Paths, Ref, RefOr, Schema}, IntoParams, ToSchema};
+use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn, PathItemBuilder}, request_body::RequestBody, Components, Content, Info, Object, ObjectBuilder, OneOf, OpenApi, PathItem, PathItemType, Paths, Ref, RefOr, Response, ResponseBuilder, Responses, Schema}, IntoParams, ToSchema};
 use axum::http::StatusCode;
 
 pub trait DocHandler<T, S> {
@@ -62,6 +62,7 @@ macro_rules! impl_method_router {
                 
                 Self {
                     docs,
+                    curr_method: PathItemType::$en,
                     method_router: self.method_router.$ty(handler)
                 }
             }
@@ -80,6 +81,7 @@ macro_rules! impl_method_router_start {
                 
                 DocMethodRouter {
                     docs,
+                    curr_method: PathItemType::$en,
                     method_router: axum::routing::$ty(handler)
                 }
             }
@@ -236,6 +238,17 @@ impl PathDocs {
         self.0.insert(method, handler_data)
     }
 
+    /// Tries to add response metadata to a given method handler.
+    /// Returns the same metadata as `Some()` variant if it fails to find the given method, `None` otherwise.
+    fn try_add_response_metadata(&mut self, method: PathItemType, metadata: ResponseMetadata) -> Option<ResponseMetadata> {
+        let Some(handler) = self.0.get_mut(&method) else {
+            return Some(metadata)
+        };
+
+        handler.response_metadata.push(metadata);
+        None
+    }
+
     fn collect(self) -> Option<(PathItem, BTreeMap<String, RefOr<Schema>>)> {
         if self.0.is_empty() {
             return None
@@ -257,6 +270,7 @@ impl PathDocs {
 struct HandlerDocs {
     params: Vec<Parameter>,
     schema: Option<(String, ContentType, RefOr<Schema>)>,
+    response_metadata: Vec<ResponseMetadata>,
 }
 
 impl HandlerDocs {
@@ -264,6 +278,7 @@ impl HandlerDocs {
         Self {
             params: Vec::new(),
             schema: None,
+            response_metadata: Vec::new(),
         }
     }
 
@@ -307,6 +322,11 @@ fn to_req_body(schema_name: impl Into<String>, content_type: ContentType) -> Req
     let content = Content::new(RefOr::Ref(Ref::from_schema_name(schema_name.into())));
     body.content = BTreeMap::from([(content_type.to_string(), content)]);
     body
+}
+
+fn to_response(description: String, content_type: ContentType, schema: RefOr<Schema>) -> Response {
+    let content = Content::new(schema);
+    ResponseBuilder::new().description(description).content(content_type.to_string(), content).build()
 }
 
 pub struct DocRouter<S> {
@@ -384,17 +404,34 @@ pub fn into_document_form(path: &str) -> String {
     path
 }
 
+pub struct ResponseMetadata {
+    status: StatusCode,
+    description: String,
+}
+
+impl ResponseMetadata {
+    pub fn new(status: StatusCode, description: String) -> Self {
+        Self {
+            status,
+            description,
+        }
+    }
+}
+
 pub struct DocMethodRouter<S: Clone + Send + Sync + 'static> {
     docs: PathDocs,
+    curr_method: PathItemType,
     method_router: MethodRouter<S>,
 }
 
 impl<S: Clone + Send + Sync + 'static> DocMethodRouter<S> {
-    pub fn new() -> Self {
-        Self {
-            docs: PathDocs::new(),
-            method_router: MethodRouter::new(),
-        }
+    pub fn response(mut self, status: StatusCode, description: impl Into<String>) -> Self {
+        let metadata = ResponseMetadata::new(status, description.into());
+
+        let res = self.docs.try_add_response_metadata(self.curr_method.clone(), metadata);
+        debug_assert!(res.is_none());
+        
+        self
     }
 
     impl_method_router!(get, Get);
