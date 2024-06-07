@@ -50,11 +50,18 @@ impl AppState {
             info!("Migration applied")
         };
 
-        let client = Client::builder().user_agent(APP_USER_AGENT).build().unwrap();
+        let client = Client::builder()
+            .user_agent(APP_USER_AGENT)
+            .build()
+            .unwrap();
 
         let oauth = OAuthClients::new(client.clone(), &config.oauth, &config.public_domain);
 
-        let redis = redis::Client::open(config.redis_url.to_string()).unwrap().get_connection_manager().await.unwrap();
+        let redis = redis::Client::open(config.redis_url.to_string())
+            .unwrap()
+            .get_connection_manager()
+            .await
+            .unwrap();
         // let verification = Verification::new();
 
         // let mailer = Mailer::new(frontend.url.clone());

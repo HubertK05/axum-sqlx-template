@@ -1,23 +1,24 @@
 mod auth;
 
 use crate::{errors::AppError, state::AppState};
-use axum::{body::Body, extract::{ConnectInfo, State}, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, routing::get, Router, debug_handler};
-use reqwest::{Client, StatusCode};
+use axum::{
+    body::Body,
+    debug_handler,
+    extract::{ConnectInfo, State},
+    http::{Request, Response, Uri},
+    response::{Html, IntoResponse, Redirect},
+    routing::get,
+    Router,
+};
+
 use std::{net::SocketAddr, time::Duration};
-use axum::extract::Query;
-use axum::routing::post;
-use oauth2::{AuthorizationCode, CsrfToken, TokenResponse};
-use oauth2::basic::BasicTokenResponse;
-use oauth2::url::Url;
-use serde::Deserialize;
+use axum::http::StatusCode;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
-use crate::oauth::{OAuthClient, OAuthClients};
 // use utoipa::OpenApi;
 // use utoipa_swagger_ui::SwaggerUi;
 
 // const SWAGGER_URI: &str = "/swagger-ui";
-
 
 pub fn app(app_state: AppState) -> Router {
     let router: Router<AppState> = Router::new();

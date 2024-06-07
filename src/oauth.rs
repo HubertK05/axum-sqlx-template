@@ -1,7 +1,9 @@
 mod github;
 
 use crate::config::{AbsoluteUri, OAuthAccess, OAuthConfiguration};
+use crate::oauth::github::GithubClient;
 use axum::async_trait;
+use axum::extract::FromRef;
 use oauth2::basic::{
     BasicClient, BasicErrorResponse, BasicRevocationErrorResponse, BasicTokenIntrospectionResponse,
     BasicTokenResponse,
@@ -13,14 +15,10 @@ use oauth2::{
     RedirectUrl, RequestTokenError, RevocationUrl, Scope, StandardErrorResponse,
     StandardRevocableToken, StandardTokenResponse, TokenUrl,
 };
-use reqwest::header::USER_AGENT;
+use redis::{RedisWrite, ToRedisArgs};
 use reqwest::{Client, Url};
 use serde::Deserialize;
-use std::env;
 use std::fmt::{Display, Formatter};
-use axum::extract::FromRef;
-use redis::{RedisWrite, ToRedisArgs};
-use crate::oauth::github::GithubClient;
 
 type CustomOAuthClient = oauth2::Client<
     BasicErrorResponse,
@@ -37,12 +35,14 @@ type CustomOAuthClient = oauth2::Client<
 
 #[derive(Clone, FromRef)]
 pub struct OAuthClients {
-    pub github: GithubClient
+    pub github: GithubClient,
 }
 
 impl OAuthClients {
     pub fn new(client: Client, config: &OAuthConfiguration, public_domain: &AbsoluteUri) -> Self {
-        Self {github: GithubClient::new(client.clone(), &config.github, public_domain)}
+        Self {
+            github: GithubClient::new(client.clone(), &config.github, public_domain),
+        }
     }
 }
 
@@ -68,7 +68,10 @@ impl Display for AuthProvider {
 }
 
 impl ToRedisArgs for AuthProvider {
-    fn write_redis_args<W>(&self, out: &mut W) where W: ?Sized + RedisWrite {
+    fn write_redis_args<W>(&self, out: &mut W)
+    where
+        W: ?Sized + RedisWrite,
+    {
         out.write_arg_fmt(self);
     }
 }
@@ -105,8 +108,5 @@ where
         RequestTokenError<HttpClientError<reqwest::Error>, BasicErrorResponse>,
     >;
 
-    async fn get_user(
-        &self,
-        token: &AccessToken,
-    ) -> Result<Self::User, Self::Error>;
+    async fn get_user(&self, token: &AccessToken) -> Result<Self::User, Self::Error>;
 }

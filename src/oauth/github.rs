@@ -1,11 +1,14 @@
-use axum::async_trait;
-use oauth2::{AccessToken, AuthorizationCode, AuthType, AuthUrl, CsrfToken, HttpClientError, RedirectUrl, RequestTokenError, Scope, TokenUrl};
-use oauth2::basic::{BasicClient, BasicErrorResponse, BasicTokenResponse};
-use oauth2::url::Url;
-use reqwest::Client;
-use serde::Deserialize;
 use crate::config::{AbsoluteUri, OAuthAccess};
 use crate::oauth::{AuthProvider, CustomOAuthClient, OAuthClient, OAuthUser};
+use axum::async_trait;
+use oauth2::basic::{BasicClient, BasicErrorResponse, BasicTokenResponse};
+use oauth2::url::Url;
+use oauth2::{
+    AccessToken, AuthType, AuthUrl, AuthorizationCode, CsrfToken, HttpClientError, RedirectUrl,
+    RequestTokenError, Scope, TokenUrl,
+};
+use reqwest::Client;
+use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 pub struct GithubUser {
@@ -21,7 +24,7 @@ impl OAuthUser for GithubUser {
 #[derive(Clone)]
 pub struct GithubClient {
     oauth_client: CustomOAuthClient,
-    client: Client
+    client: Client,
 }
 
 impl GithubClient {
@@ -41,7 +44,10 @@ impl GithubClient {
                     .expect("Invalid redirect URL"),
             );
 
-        Self {oauth_client, client}
+        Self {
+            oauth_client,
+            client,
+        }
     }
 }
 
@@ -69,13 +75,13 @@ impl OAuthClient for GithubClient {
         BasicTokenResponse,
         RequestTokenError<HttpClientError<reqwest::Error>, BasicErrorResponse>,
     > {
-        self.oauth_client.exchange_code(code).request_async(&self.client).await
+        self.oauth_client
+            .exchange_code(code)
+            .request_async(&self.client)
+            .await
     }
 
-    async fn get_user(
-        &self,
-        token: &AccessToken,
-    ) -> Result<Self::User, Self::Error> {
+    async fn get_user(&self, token: &AccessToken) -> Result<Self::User, Self::Error> {
         self.client
             .get("https://api.github.com/user")
             .bearer_auth(token.secret())

@@ -9,7 +9,6 @@ pub mod routes;
 pub mod setup;
 pub mod state;
 
-use axum::response::IntoResponse;
 use axum::Router;
 use config::load_config;
 use listenfd::ListenFd;

@@ -3,6 +3,7 @@ use anyhow::{bail, Context};
 use axum::http::uri::{PathAndQuery, Scheme};
 use axum::http::Uri;
 use config::{Config, ConfigError, File, FileFormat};
+use oauth2::{ClientId, ClientSecret};
 use serde::de::{Error, IntoDeserializer, Visitor};
 use serde::{Deserialize, Deserializer};
 use std::fmt::{Display, Formatter};
@@ -12,7 +13,6 @@ use std::{
     env::{var, vars},
     net::{IpAddr, Ipv4Addr, SocketAddr},
 };
-use oauth2::{ClientId, ClientSecret};
 
 use crate::state::Environment;
 const ADDRESS: &str = "ADDRESS";
@@ -55,7 +55,10 @@ pub struct OAuthConfiguration {
 
 impl OAuthConfiguration {
     fn from_env() -> Self {
-        Self {is_enabled: true, github: OAuthAccess::from_env(AuthProvider::Github)}
+        Self {
+            is_enabled: true,
+            github: OAuthAccess::from_env(AuthProvider::Github),
+        }
     }
 }
 
@@ -112,9 +115,9 @@ impl Configuration {
         });
 
         let database_url: String = config.get(DATABASE_URL).unwrap();
-        
+
         let redis_url: String = config.get(REDIS_URL).unwrap();
-        
+
         let public_domain: AbsoluteUri = config.get(PUBLIC_DOMAIN).unwrap_or_else(|e| {
             if matches!(e, ConfigError::NotFound(_)) {
                 AbsoluteUri::from_addr(&address)
@@ -131,7 +134,7 @@ impl Configuration {
             database_url,
             redis_url,
             public_domain,
-            oauth
+            oauth,
         }
     }
 }

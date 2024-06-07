@@ -48,7 +48,7 @@ macro_rules! log_query_as {
 
         sqlx::query_as!($model, $query, $($param),*)
     }};
-    
+
     ($model:ty, $query:expr) => {{
         let formatted_query = $query.to_string();
 
@@ -76,7 +76,7 @@ macro_rules! log_query {
 
         sqlx::query!($query, $($param),*)
     }};
-    
+
     ($query:expr) => {{
         let formatted_query = $query.to_string();
 
@@ -88,8 +88,8 @@ macro_rules! log_query {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::Display;
     use rstest::rstest;
+    use std::fmt::Display;
 
     #[allow(dead_code)]
     #[derive(Debug)]
