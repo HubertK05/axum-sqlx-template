@@ -12,6 +12,7 @@ axum = { version = "0.7.5", features = ["tracing", "macros"] }
 axum-extra = { version = "0.9.3", features = ["cookie"] }
 config = "0.14.0"
 dotenvy = "0.15.7"
+jsonwebtoken = "9.3.0"
 listenfd = "1.0.1"
 oauth2 = "5.0.0-alpha.4"
 redis = { version = "0.25.4", features = ["tokio-comp", "tokio-rustls-comp", "connection-manager", "uuid"] }
