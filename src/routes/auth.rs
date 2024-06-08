@@ -18,6 +18,7 @@ use sqlx::types::Uuid;
 use sqlx::PgPool;
 use std::str::FromStr;
 
+pub mod jwt;
 mod oauth;
 
 pub fn router() -> AppRouter {
