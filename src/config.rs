@@ -30,6 +30,7 @@ pub struct Configuration {
     pub redis_url: String,
     pub public_domain: AbsoluteUri,
     pub oauth: OAuthConfiguration,
+    pub jwt: JwtConfiguration,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,6 +59,21 @@ impl OAuthConfiguration {
         Self {
             is_enabled: true,
             github: OAuthAccess::from_env(AuthProvider::Github),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct JwtConfiguration {
+    pub access_secret: String,
+    pub refresh_secret: String,
+}
+
+impl JwtConfiguration {
+    fn from_env() -> Self {
+        Self {
+            access_secret: var("JWT_ACCESS_SECRET").unwrap(),
+            refresh_secret: var("JWT_REFRESH_SECRET").unwrap(),
         }
     }
 }
@@ -94,6 +110,8 @@ impl Configuration {
             .expect("Invalid URI format for PUBLIC_DOMAIN");
 
         let oauth: OAuthConfiguration = OAuthConfiguration::from_env();
+        
+        let jwt: JwtConfiguration = JwtConfiguration::from_env();
 
         Self {
             environment,
@@ -102,6 +120,7 @@ impl Configuration {
             redis_url,
             public_domain,
             oauth,
+            jwt,
         }
     }
 
@@ -128,6 +147,8 @@ impl Configuration {
 
         let oauth: OAuthConfiguration = config.get("oauth").unwrap();
 
+        let jwt: JwtConfiguration = config.get("jwt").unwrap();
+
         Self {
             environment,
             address,
@@ -135,6 +156,7 @@ impl Configuration {
             redis_url,
             public_domain,
             oauth,
+            jwt,
         }
     }
 }
