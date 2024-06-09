@@ -3,6 +3,7 @@ mod macros;
 
 pub mod config;
 pub mod errors;
+pub mod mailer;
 mod miscutils;
 pub mod oauth;
 pub mod routes;
