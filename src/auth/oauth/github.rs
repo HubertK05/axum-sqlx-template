@@ -1,5 +1,5 @@
+use crate::auth::oauth::{AuthProvider, CustomOAuthClient, OAuthClient, OAuthUser};
 use crate::config::{AbsoluteUri, OAuthAccess};
-use crate::oauth::{AuthProvider, CustomOAuthClient, OAuthClient, OAuthUser};
 use axum::async_trait;
 use oauth2::basic::{BasicClient, BasicErrorResponse, BasicTokenResponse};
 use oauth2::url::Url;

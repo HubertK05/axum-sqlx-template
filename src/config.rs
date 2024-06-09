@@ -1,4 +1,4 @@
-use crate::oauth::AuthProvider;
+use crate::auth::oauth::AuthProvider;
 use anyhow::{bail, Context};
 use axum::http::uri::{PathAndQuery, Scheme};
 use axum::http::Uri;
@@ -63,7 +63,7 @@ impl OAuthConfiguration {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct JwtConfiguration {
     pub access_secret: String,
     pub refresh_secret: String,
@@ -110,7 +110,7 @@ impl Configuration {
             .expect("Invalid URI format for PUBLIC_DOMAIN");
 
         let oauth: OAuthConfiguration = OAuthConfiguration::from_env();
-        
+
         let jwt: JwtConfiguration = JwtConfiguration::from_env();
 
         Self {
@@ -177,7 +177,7 @@ pub fn load_config() -> Result<Configuration, anyhow::Error> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AbsoluteUri(Uri);
 
 impl AbsoluteUri {
@@ -192,12 +192,16 @@ impl AbsoluteUri {
         )
     }
 
-    fn domain(&self) -> String {
+    fn uri(&self) -> String {
         format!(
             "{}://{}",
             self.0.scheme_str().unwrap(),
             self.0.authority().unwrap()
         )
+    }
+
+    pub fn domain(&self) -> String {
+        self.0.authority().unwrap().to_string()
     }
 }
 
@@ -218,7 +222,7 @@ impl TryFrom<Uri> for AbsoluteUri {
 
 impl Display for AbsoluteUri {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.domain())
+        write!(f, "{}", self.uri())
     }
 }
 

@@ -1,10 +1,10 @@
 #[macro_use]
 mod macros;
 
+pub mod auth;
 pub mod config;
 pub mod errors;
 mod miscutils;
-pub mod oauth;
 pub mod routes;
 pub mod setup;
 pub mod state;
@@ -29,9 +29,7 @@ pub type AppRouter = Router<AppState>;
 
 pub trait AsyncRedisConn: ConnectionLike + Send + AsyncCommands {}
 
-impl<T> AsyncRedisConn for T
-where
-    T: ConnectionLike + Send + AsyncCommands {}
+impl<T> AsyncRedisConn for T where T: ConnectionLike + Send + AsyncCommands {}
 
 #[tokio::main]
 async fn main() {

@@ -1,3 +1,7 @@
+use crate::auth::jwt::init_token_family;
+use crate::auth::oauth::{AuthProvider, OAuthClient, OAuthClients, OAuthUser};
+use crate::auth::session::Session;
+use crate::config::AbsoluteUri;
 use crate::errors::AppError;
 use crate::AppRouter;
 use axum::extract::{Query, State};
@@ -5,17 +9,15 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::get;
 use axum::{debug_handler, Json, Router};
+use axum_extra::extract::CookieJar;
 use oauth2::basic::BasicTokenResponse;
 use oauth2::{AuthorizationCode, CsrfToken, TokenResponse};
-use redis::{AsyncCommands, RedisWrite, ToRedisArgs};
+use redis::{AsyncCommands, RedisResult};
 use serde::Deserialize;
-use serde_json::json;
 use sqlx::types::Uuid;
-use sqlx::{PgExecutor, PgPool, Transaction};
+use sqlx::{PgExecutor, PgPool};
 
-use crate::oauth::{AuthProvider, OAuthClient, OAuthClients, OAuthUser};
-use crate::routes::auth::ClientSession;
-use crate::state::{AppState, RdPool};
+use crate::state::{AppState, JwtKeys, RdPool};
 
 pub fn router() -> AppRouter {
     Router::new()
@@ -29,23 +31,39 @@ struct OAuthQuery {
     state: CsrfToken,
 }
 
-struct RedisKey;
+struct CsrfState;
 
-impl RedisKey {
-    fn csrf(csrf_token: &CsrfToken) -> String {
+impl CsrfState {
+    async fn check(rds: &mut RdPool, csrf_token: &CsrfToken) -> RedisResult<bool> {
+        rds.del(Self::key(csrf_token)).await
+    }
+
+    async fn add(
+        rds: &mut RdPool,
+        auth_provider: AuthProvider,
+        csrf_token: &CsrfToken,
+    ) -> RedisResult<()> {
+        rds.set_ex(Self::key(csrf_token), auth_provider, 60 * 5)
+            .await
+    }
+
+    fn key(csrf_token: &CsrfToken) -> String {
         format!("csrf:{}", csrf_token.secret())
     }
 }
 
 #[debug_handler(state = AppState)]
 async fn handle_github_callback(
+    jar: CookieJar,
+    State(jwt_keys): State<JwtKeys>,
+    State(public_domain): State<AbsoluteUri>,
     State(mut rds): State<RdPool>,
     State(db): State<PgPool>,
     State(oauth): State<OAuthClients>,
     Query(query): Query<OAuthQuery>,
 ) -> crate::Result<impl IntoResponse> {
-    let is_matched_state: bool = rds.del(RedisKey::csrf(&query.state)).await?;
-    if !is_matched_state {
+    let is_matching_state: bool = CsrfState::check(&mut rds, &query.state).await?;
+    if !is_matching_state {
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid CSRF state"));
     }
     trace!("Matching CSRF state for {}", query.state.secret());
@@ -57,15 +75,34 @@ async fn handle_github_callback(
     if let Some(user_id) =
         select_user_id_from_federated_credentials(&db, &auth_provider, &subject_id).await?
     {
-        ClientSession::set(&mut rds, &user_id).await?;
+        let tokens = init_token_family(&mut rds, &jwt_keys, user_id).await?;
         trace!("{user_id} logged in with {auth_provider}");
-        Ok(Html(format!("<h1>Authenticated with {auth_provider}</h1>")))
+        Ok((
+            tokens.add_cookies(jar, &public_domain),
+            Html(format!("<h1>Authenticated with {auth_provider}</h1>")),
+        ))
+        // session cookie based auth part
+        // let session_cookie = Session::set(&mut rds, &user_id).await?;
+        // Ok((
+        //     jar.add(session_cookie),
+        //     Html(format!("<h1>Authenticated with {auth_provider}</h1>")),
+        // ))
     } else {
         let user_id =
             create_user_with_federated_credential(&db, &auth_provider, &subject_id).await?;
-        ClientSession::set(&mut rds, &user_id).await?;
+        let tokens = init_token_family(&mut rds, &jwt_keys, user_id).await?;
         trace!("{user_id} registered with {auth_provider}");
-        Ok(Html(format!("<h1>Authenticated with {auth_provider}</h1>")))
+
+        Ok((
+            tokens.add_cookies(jar, &public_domain),
+            Html(format!("<h1>Authenticated with {auth_provider}</h1>")),
+        ))
+        // session cookie based auth part
+        // let session_cookie = Session::set(&mut rds, &user_id).await?;
+        // Ok((
+        //     jar.add(session_cookie),
+        //     Html(format!("<h1>Authenticated with {auth_provider}</h1>")),
+        // ))
     }
 }
 
@@ -76,8 +113,7 @@ async fn issue_url(
 ) -> crate::Result<impl IntoResponse> {
     let (url, csrf_token) = oauth.github.get_url_and_state();
     trace!("Issued federated authentication method url");
-    rds.set_ex(RedisKey::csrf(&csrf_token), AuthProvider::Github, 60 * 5)
-        .await?;
+    CsrfState::add(&mut rds, AuthProvider::Github, &csrf_token).await?;
 
     Ok(Redirect::to(url.as_str()))
 }

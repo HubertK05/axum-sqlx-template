@@ -1,8 +1,10 @@
-use crate::config::Configuration;
+use crate::auth::oauth::OAuthClients;
+use crate::config::{AbsoluteUri, Configuration, JwtConfiguration};
 use crate::errors::AppError;
-use crate::oauth::OAuthClients;
 use anyhow::anyhow;
+use argon2::password_hash::Encoding;
 use axum::extract::FromRef;
+use jsonwebtoken::{DecodingKey, EncodingKey};
 use reqwest::Client;
 use serde::de::{Error, Visitor};
 use serde::Deserialize;
@@ -13,6 +15,7 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::time::Duration;
 use tracing::log::LevelFilter;
+
 // use crate::extensions::mail::Mailer;
 // use crate::extensions::oauth2::OAuth;
 // use crate::extensions::verification::Verification;
@@ -24,6 +27,8 @@ pub struct AppState {
     redis: RdPool,
     client: Client,
     oauth: OAuthClients,
+    public_domain: AbsoluteUri,
+    jwt_keys: JwtKeys,
     // verification: Verification,
     // mailer: Mailer,
     environment: Environment,
@@ -55,7 +60,11 @@ impl AppState {
             .build()
             .unwrap();
 
-        let oauth = OAuthClients::new(client.clone(), &config.oauth, &config.public_domain);
+        let jwt_keys = JwtKeys::from(&config.jwt);
+
+        let public_domain = config.public_domain.clone();
+
+        let oauth = OAuthClients::new(client.clone(), &config.oauth, &public_domain);
 
         let redis = redis::Client::open(config.redis_url.to_string())
             .unwrap()
@@ -71,6 +80,8 @@ impl AppState {
             redis,
             client,
             oauth,
+            public_domain,
+            jwt_keys,
             // verification,
             // mailer,
             environment: config.environment,
@@ -79,6 +90,43 @@ impl AppState {
 
     pub fn env(&self) -> Environment {
         self.environment
+    }
+}
+
+#[derive(Clone)]
+pub struct JwtKeys {
+    encoding_access: EncodingKey,
+    encoding_refresh: EncodingKey,
+    decoding_access: DecodingKey,
+    decoding_refresh: DecodingKey,
+}
+
+impl From<&JwtConfiguration> for JwtKeys {
+    fn from(value: &JwtConfiguration) -> Self {
+        Self::new(&value.access_secret, &value.refresh_secret)
+    }
+}
+
+impl JwtKeys {
+    pub fn new(access_secret: &str, refresh_secret: &str) -> Self {
+        Self {
+            encoding_access: EncodingKey::from_secret(access_secret.as_bytes()),
+            encoding_refresh: EncodingKey::from_secret(refresh_secret.as_bytes()),
+            decoding_access: DecodingKey::from_secret(access_secret.as_bytes()),
+            decoding_refresh: DecodingKey::from_secret(refresh_secret.as_bytes()),
+        }
+    }
+    pub fn encoding_access(&self) -> &EncodingKey {
+        &self.encoding_access
+    }
+    pub fn encoding_refresh(&self) -> &EncodingKey {
+        &self.encoding_refresh
+    }
+    pub fn decoding_access(&self) -> &DecodingKey {
+        &self.decoding_access
+    }
+    pub fn decoding_refresh(&self) -> &DecodingKey {
+        &self.decoding_refresh
     }
 }
 

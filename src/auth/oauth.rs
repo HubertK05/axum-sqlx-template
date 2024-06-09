@@ -1,7 +1,7 @@
 mod github;
 
+use crate::auth::oauth::github::GithubClient;
 use crate::config::{AbsoluteUri, OAuthAccess, OAuthConfiguration};
-use crate::oauth::github::GithubClient;
 use axum::async_trait;
 use axum::extract::FromRef;
 use oauth2::basic::{
