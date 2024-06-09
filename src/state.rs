@@ -13,7 +13,7 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::time::Duration;
 use tracing::log::LevelFilter;
-// use crate::extensions::mail::Mailer;
+use crate::mailer::Mailer;
 // use crate::extensions::oauth2::OAuth;
 // use crate::extensions::verification::Verification;
 pub type RdPool = redis::aio::ConnectionManager;
@@ -25,9 +25,11 @@ pub struct AppState {
     client: Client,
     oauth: OAuthClients,
     // verification: Verification,
-    // mailer: Mailer,
+    mailer: Mailer,
     environment: Environment,
 }
+
+const FRONTEND_URL: &str = "";
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
@@ -64,7 +66,7 @@ impl AppState {
             .unwrap();
         // let verification = Verification::new();
 
-        // let mailer = Mailer::new(frontend.url.clone());
+        let mailer = Mailer::new(FRONTEND_URL.to_string(), &config.smtp);
 
         Self {
             db,
@@ -72,7 +74,7 @@ impl AppState {
             client,
             oauth,
             // verification,
-            // mailer,
+            mailer,
             environment: config.environment,
         }
     }
