@@ -12,6 +12,8 @@ pub mod state;
 use axum::Router;
 use config::load_config;
 use listenfd::ListenFd;
+use redis::aio::ConnectionLike;
+use redis::AsyncCommands;
 use setup::setup_globals;
 use state::AppState;
 use tokio::net::TcpListener;
@@ -24,6 +26,12 @@ pub extern crate sqlx;
 
 pub type Result<T, E = errors::AppError> = std::result::Result<T, E>;
 pub type AppRouter = Router<AppState>;
+
+pub trait AsyncRedisConn: ConnectionLike + Send + AsyncCommands {}
+
+impl<T> AsyncRedisConn for T
+where
+    T: ConnectionLike + Send + AsyncCommands {}
 
 #[tokio::main]
 async fn main() {
