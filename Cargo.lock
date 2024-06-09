@@ -221,6 +221,7 @@ dependencies = [
  "listenfd",
  "oauth2",
  "redis",
+ "redis-test",
  "reqwest",
  "rstest",
  "serde",
@@ -1814,6 +1815,17 @@ dependencies = [
  "tokio-util",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "redis-test"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a948b3cec9e4b1fedbb0f0788e79029fb1f641b6cfefb7a15d044f803854427"
+dependencies = [
+ "bytes",
+ "futures",
+ "redis",
 ]
 
 [[package]]
