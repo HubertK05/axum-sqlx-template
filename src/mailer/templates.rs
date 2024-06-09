@@ -9,16 +9,16 @@ pub struct Mail {
 }
 
 pub struct AccountVerificationMail {
-    username: Option<String>,
+    username: String,
     to: Address,
     duration: Option<Duration>,
     callback_uri: String,
 }
 
 impl AccountVerificationMail {
-    pub fn new(username: Option<impl Into<String>>, to: Address, duration: Option<Duration>, callback_uri: String) -> Self {
+    pub fn new(username: impl Into<String>, to: Address, duration: Option<Duration>, callback_uri: String) -> Self {
         Self {
-            username: username.map(|x| x.into()),
+            username: username.into(),
             to,
             duration,
             callback_uri,
@@ -41,7 +41,7 @@ impl From<AccountVerificationMail> for Mail {
         }.into_string();
         
         Self {
-            to: Mailbox::new(val.username, val.to),
+            to: Mailbox::new(Some(val.username), val.to),
             subject: "Account verification".to_string(),
             body: MultiPart::alternative_plain_html(body.clone(), body),
         }

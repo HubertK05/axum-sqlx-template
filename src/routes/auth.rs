@@ -1,6 +1,9 @@
 use crate::errors::{DbErrMap, AppError};
+use crate::mailer::templates::AccountVerificationMail;
+use crate::mailer::Mailer;
 use crate::state::RdPool;
 use crate::AppRouter;
+use anyhow::Context;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
@@ -12,14 +15,19 @@ use axum::routing::{get, post};
 use axum::{async_trait, Json, RequestPartsExt, Router};
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
+use lettre::Address;
 use redis::{AsyncCommands, Expiry, RedisError};
 use serde::Deserialize;
 use sqlx::types::Uuid;
 use sqlx::PgPool;
+use time::Duration;
 use std::str::FromStr;
 
 pub mod jwt;
 mod oauth;
+
+const VERIFICATION_PATH: &str = "/auth/verify";
+const VERIFICATION_EXPIRY: Duration = Duration::days(7);
 
 pub fn router() -> AppRouter {
     Router::new()
@@ -33,6 +41,7 @@ pub fn router() -> AppRouter {
 #[derive(Deserialize)]
 struct RegistrationForm {
     login: String,
+    email: String,
     password: String,
 }
 
@@ -40,9 +49,13 @@ async fn register(
     jar: CookieJar,
     State(mut rds): State<RdPool>,
     State(db): State<PgPool>,
+    State(mailer): State<Mailer>,
     Json(body): Json<RegistrationForm>,
 ) -> crate::Result<impl IntoResponse> {
     // TODO: check for session
+
+    let target_address = Address::from_str(body.email.as_ref()).map_err(|e| AppError::exp(StatusCode::UNPROCESSABLE_ENTITY, format!("Invalid email: {e}")))?;
+
     let entropy = zxcvbn::zxcvbn(&body.password, &[&body.login]);
     if let Some(feedback) = entropy.feedback() {
         let warning = feedback
@@ -71,6 +84,8 @@ async fn register(
     .fetch_one(&db)
     .await.map_db_err(|e| e.unique(StatusCode::CONFLICT, "Login is not available"))?
     .id;
+
+    send_verification_mail(mailer, &body.login, target_address, VERIFICATION_EXPIRY).await?;
 
     let session_id = ClientSession::set(&mut rds, &user_id).await?;
 
@@ -198,6 +213,15 @@ where
             user_id,
         })
     }
+}
+
+async fn send_verification_mail(mailer: Mailer, username: impl Into<String>, to: Address, expiry: Duration) -> Result<(), AppError> {
+    let token_id = Uuid::new_v4();
+    let callback_url = format!("{VERIFICATION_PATH}?token={token_id}");
+    let mail = AccountVerificationMail::new(username, to,  Some(expiry), callback_url);
+    
+    let _ = mailer.send_mail(mail).await.context("Failed to send account verification mail")?;
+    Ok(())
 }
 
 fn hash(password: String) -> String {
