@@ -7,7 +7,7 @@ use anyhow::Context;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
-use axum::extract::{FromRef, FromRequestParts, State};
+use axum::extract::{FromRef, FromRequestParts, Query, State};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
@@ -35,6 +35,7 @@ pub fn router() -> AppRouter {
         .route("/login", post(login))
         .route("/logout", post(logout))
         .route("/session", get(session))
+        .route("/verify", post(verify_address))
         .nest("/oauth2", oauth::router())
 }
 
@@ -134,6 +135,25 @@ async fn login(
     )) // precise cause of error is hidden from the end user
 }
 
+async fn verify_address(
+    claims: Claims,
+    State(db): State<PgPool>,
+    State(mut rds): State<RdPool>,
+    Query(token): Query<Uuid>,
+) -> crate::Result<impl IntoResponse> {
+    let Some(user_id) = VerificationEntry::delete(&mut rds, token).await? else {
+        return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid token"))
+    };
+
+    if user_id != claims.user_id {
+        return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid token"))
+    }
+
+    verify_account(&db, user_id).await?;
+
+    Ok(())
+}
+
 async fn logout(claims: Claims, State(mut rds): State<RdPool>) -> crate::Result<impl IntoResponse> {
 
     ClientSession::invalidate(&mut rds, &claims.session_id).await?;
@@ -217,8 +237,8 @@ where
     }
 }
 
-async fn send_verification_mail(mailer: Mailer, token_id: Uuid, username: impl Into<String>, to: Address) -> Result<(), AppError> {
-    let callback_url = format!("{VERIFICATION_PATH}?token={token_id}");
+async fn send_verification_mail(mailer: Mailer, token: Uuid, username: impl Into<String>, to: Address) -> Result<(), AppError> {
+    let callback_url = format!("{VERIFICATION_PATH}?token={token}");
     let mail = AccountVerificationMail::new(username, to,  Some(VERIFICATION_EXPIRY), callback_url);
     
     let _ = mailer.send_mail(mail).await.context("Failed to send account verification mail")?;
@@ -236,8 +256,8 @@ impl VerificationEntry {
         Ok(rds.set_ex(verification_entry_key(token_id), user_id, VERIFICATION_EXPIRY.whole_seconds() as u64).await?)
     }
 
-    async fn get(rds: &mut impl AsyncRedisConn, token_id: Uuid) -> RedisResult<Option<Uuid>> {
-        rds.get(verification_entry_key(token_id)).await
+    async fn delete(rds: &mut impl AsyncRedisConn, token_id: Uuid) -> RedisResult<Option<Uuid>> {
+        rds.del(verification_entry_key(token_id)).await
     }
 }
 
@@ -255,4 +275,19 @@ fn is_correct_password(password: String, password_hash: String) -> bool {
     Argon2::default()
         .verify_password(password.as_bytes(), &parsed_hash)
         .is_ok()
+}
+
+async fn verify_account(db: &PgPool, user_id: Uuid) -> Result<(), AppError> {
+    query!(
+        r#"
+            UPDATE users
+            SET verified = true
+            WHERE id = $1
+        "#,
+        user_id
+    )
+    .execute(db)
+    .await?;
+
+    Ok(())
 }
