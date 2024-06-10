@@ -1,7 +1,9 @@
 CREATE TABLE users(
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     login TEXT,
+    email TEXT,
     password TEXT,
+    verified BOOLEAN NOT NULL,
     UNIQUE (login)
 );
 

@@ -2,7 +2,7 @@ use crate::errors::{DbErrMap, AppError};
 use crate::mailer::templates::AccountVerificationMail;
 use crate::mailer::Mailer;
 use crate::state::RdPool;
-use crate::AppRouter;
+use crate::{AppRouter, AsyncRedisConn};
 use anyhow::Context;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
@@ -16,7 +16,7 @@ use axum::{async_trait, Json, RequestPartsExt, Router};
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
 use lettre::Address;
-use redis::{AsyncCommands, Expiry, RedisError};
+use redis::{AsyncCommands, Expiry, RedisError, RedisResult};
 use serde::Deserialize;
 use sqlx::types::Uuid;
 use sqlx::PgPool;
@@ -74,8 +74,8 @@ async fn register(
 
     let user_id = query!(
         r#"
-    INSERT INTO users (login, password)
-    VALUES ($1, $2)
+    INSERT INTO users (login, password, verified)
+    VALUES ($1, $2, false)
     RETURNING id
     "#,
         &body.login,
@@ -85,7 +85,9 @@ async fn register(
     .await.map_db_err(|e| e.unique(StatusCode::CONFLICT, "Login is not available"))?
     .id;
 
-    send_verification_mail(mailer, &body.login, target_address, VERIFICATION_EXPIRY).await?;
+    let token_id = Uuid::new_v4();
+    send_verification_mail(mailer, token_id, &body.login, target_address).await?;
+    VerificationEntry::set(&mut rds, token_id, user_id).await?;
 
     let session_id = ClientSession::set(&mut rds, &user_id).await?;
 
@@ -215,13 +217,28 @@ where
     }
 }
 
-async fn send_verification_mail(mailer: Mailer, username: impl Into<String>, to: Address, expiry: Duration) -> Result<(), AppError> {
-    let token_id = Uuid::new_v4();
+async fn send_verification_mail(mailer: Mailer, token_id: Uuid, username: impl Into<String>, to: Address) -> Result<(), AppError> {
     let callback_url = format!("{VERIFICATION_PATH}?token={token_id}");
-    let mail = AccountVerificationMail::new(username, to,  Some(expiry), callback_url);
+    let mail = AccountVerificationMail::new(username, to,  Some(VERIFICATION_EXPIRY), callback_url);
     
     let _ = mailer.send_mail(mail).await.context("Failed to send account verification mail")?;
     Ok(())
+}
+
+struct VerificationEntry;
+
+fn verification_entry_key(token_id: Uuid) -> String {
+    format!("verification:token:{token_id}")
+}
+
+impl VerificationEntry {
+    async fn set(rds: &mut impl AsyncRedisConn, token_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
+        Ok(rds.set_ex(verification_entry_key(token_id), user_id, VERIFICATION_EXPIRY.whole_seconds() as u64).await?)
+    }
+
+    async fn get(rds: &mut impl AsyncRedisConn, token_id: Uuid) -> RedisResult<Option<Uuid>> {
+        rds.get(verification_entry_key(token_id)).await
+    }
 }
 
 fn hash(password: String) -> String {
