@@ -18,7 +18,7 @@ const ADDRESS: &str = "ADDRESS";
 const DATABASE_URL: &str = "DATABASE_URL";
 const PUBLIC_DOMAIN: &str = "PUBLIC_DOMAIN";
 const REQUIRED: &[&str] = &[ADDRESS, DATABASE_URL, PUBLIC_DOMAIN];
-const LOCAL_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 3000);
+const LOCAL_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 3000);
 
 #[derive(Debug)]
 pub struct Configuration {
