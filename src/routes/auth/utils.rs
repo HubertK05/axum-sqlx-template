@@ -39,7 +39,7 @@ async fn request_password_change(
         .send_password_change_request_mail(token, body.email.clone(), Some(PASSWORD_CHANGE_EXPIRY))
         .await
         .context("Failed to send mail")?;
-    VerificationEntry::set(&mut rds, token, body.email.to_string()).await?;
+    VerificationEntry::set(&mut rds, token, body.email.to_string(), PASSWORD_CHANGE_EXPIRY).await?;
 
     Ok(())
 }

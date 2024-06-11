@@ -11,6 +11,7 @@ mod jwt;
 mod oauth;
 mod session;
 mod utils;
+
 // TODO add configuration
 const IS_JWT_AUTH: bool = true;
 
@@ -72,17 +73,17 @@ impl VerificationEntry {
         rds: &mut impl AsyncRedisConn,
         token: Uuid,
         value: T,
+        expiry: Duration,
     ) -> Result<(), AppError> {
         Ok(rds
             .set_ex(
                 Self::key(token),
                 value,
-                VERIFICATION_EXPIRY.whole_seconds() as u64,
+                expiry.whole_seconds() as u64,
             )
             .await?)
     }
 
-    /// Retrieves user_id from token
     pub async fn get<T: FromRedisValue>(
         rds: &mut impl AsyncRedisConn,
         token: Uuid,

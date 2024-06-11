@@ -65,7 +65,7 @@ async fn register(
         .send_verification_mail(token_id, &body.login, body.email, Some(VERIFICATION_EXPIRY))
         .await
         .context("Failed to send verification mail")?;
-    VerificationEntry::set(&mut rds, token_id, user_id).await?;
+    VerificationEntry::set(&mut rds, token_id, user_id, VERIFICATION_EXPIRY).await?;
 
     let tokens = init_token_family(&mut rds, &jwt_keys, user_id).await?;
 

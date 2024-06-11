@@ -62,7 +62,7 @@ async fn register(
         .send_verification_mail(token_id, &body.login, body.email, Some(VERIFICATION_EXPIRY))
         .await
         .context("Failed to send verification mail")?;
-    VerificationEntry::set(&mut rds, token_id, user_id).await?;
+    VerificationEntry::set(&mut rds, token_id, user_id, VERIFICATION_EXPIRY).await?;
 
     let session_cookie = Session::set(&mut rds, &user_id).await?;
 
