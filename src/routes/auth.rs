@@ -26,16 +26,16 @@ use std::str::FromStr;
 pub mod jwt;
 mod oauth;
 
-const VERIFICATION_PATH: &str = "/auth/verify";
 const VERIFICATION_EXPIRY: Duration = Duration::days(7);
 
+// /verify endpoint is currently GET, because there is no frontend and the request goes directly to the backend
 pub fn router() -> AppRouter {
     Router::new()
         .route("/register", post(register))
         .route("/login", post(login))
         .route("/logout", post(logout))
         .route("/session", get(session))
-        .route("/verify", post(verify_address))
+        .route("/verify", get(verify_address))
         .nest("/oauth2", oauth::router())
 }
 
@@ -87,7 +87,7 @@ async fn register(
     .id;
 
     let token_id = Uuid::new_v4();
-    send_verification_mail(mailer, token_id, &body.login, target_address).await?;
+    mailer.send_verification_mail(token_id, &body.login, target_address, Some(VERIFICATION_EXPIRY)).await.context("Failed to send verification mail")?;
     VerificationEntry::set(&mut rds, token_id, user_id).await?;
 
     let session_id = ClientSession::set(&mut rds, &user_id).await?;
@@ -135,17 +135,22 @@ async fn login(
     )) // precise cause of error is hidden from the end user
 }
 
+#[derive(Deserialize)]
+struct VerificationToken {
+    token: Uuid,
+}
+
 async fn verify_address(
     State(db): State<PgPool>,
     State(mut rds): State<RdPool>,
-    Query(token): Query<Uuid>,
+    Query(token): Query<VerificationToken>,
 ) -> crate::Result<impl IntoResponse> {
-    let Some(user_id) = VerificationEntry::get(&mut rds, token).await? else {
+    let Some(user_id) = VerificationEntry::get(&mut rds, token.token).await? else {
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid token"))
     };
 
     verify_account(&db, user_id).await?;
-    VerificationEntry::delete(&mut rds, token).await?;
+    VerificationEntry::delete(&mut rds, token.token).await?;
 
     Ok(())
 }
@@ -231,14 +236,6 @@ where
             user_id,
         })
     }
-}
-
-async fn send_verification_mail(mailer: Mailer, token: Uuid, username: impl Into<String>, to: Address) -> Result<(), AppError> {
-    let callback_url = format!("{VERIFICATION_PATH}?token={token}");
-    let mail = AccountVerificationMail::new(username, to,  Some(VERIFICATION_EXPIRY), callback_url);
-    
-    mailer.send_mail(mail).await.context("Failed to send account verification mail")?;
-    Ok(())
 }
 
 struct VerificationEntry;

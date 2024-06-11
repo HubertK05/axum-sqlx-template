@@ -29,7 +29,7 @@ pub struct AppState {
     environment: Environment,
 }
 
-const FRONTEND_URL: &str = "";
+const FRONTEND_URL: &str = "http://localhost:3000";
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
