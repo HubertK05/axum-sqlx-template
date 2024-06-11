@@ -24,7 +24,7 @@ pub struct AppState {
     redis: RdPool,
     client: Client,
     oauth: OAuthClients,
-    public_domain: AbsoluteUri,
+    domain_name: AbsoluteUri,
     jwt_keys: JwtKeys,
     // verification: Verification,
     mailer: Mailer,
@@ -61,9 +61,9 @@ impl AppState {
 
         let jwt_keys = JwtKeys::from(&config.jwt);
 
-        let public_domain = config.public_domain.clone();
+        let domain_name = config.domain_name.clone();
 
-        let oauth = OAuthClients::new(client.clone(), &config.oauth, &public_domain);
+        let oauth = OAuthClients::new(client.clone(), &config.oauth, &domain_name);
 
         let redis = redis::Client::open(config.redis_url.to_string())
             .unwrap()
@@ -78,7 +78,7 @@ impl AppState {
             redis,
             client,
             oauth,
-            public_domain,
+            domain_name,
             jwt_keys,
             mailer,
             environment: config.environment,

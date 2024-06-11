@@ -19,10 +19,10 @@ use crate::auth::jwt::{
 };
 use crate::auth::{hash_password, is_correct_password, LoginForm, RegistrationForm};
 use crate::errors::DbErrMap;
+use crate::mailer::Mailer;
+use crate::routes::auth::{VerificationEntry, VERIFICATION_EXPIRY};
 use crate::state::{AppState, JwtKeys};
 use crate::{config::JwtConfiguration, errors::AppError, state::RdPool, AppRouter, AsyncRedisConn};
-use crate::mailer::Mailer;
-use crate::routes::auth::{VERIFICATION_EXPIRY, VerificationEntry};
 
 pub fn router() -> AppRouter {
     Router::new()
@@ -71,15 +71,15 @@ async fn register(
         password_hash,
         AsRef::<str>::as_ref(&body.email),
     )
-        .fetch_one(&db)
-        .await
-        .map_db_err(|e| {
-            e.unique(
-                StatusCode::CONFLICT,
-                "Cannot create user with provided data",
-            )
-        })?
-        .id;
+    .fetch_one(&db)
+    .await
+    .map_db_err(|e| {
+        e.unique(
+            StatusCode::CONFLICT,
+            "Cannot create user with provided data",
+        )
+    })?
+    .id;
 
     let token_id = Uuid::new_v4();
     // TODO: reconsider changing order of sending email and creating a token entry in Redis

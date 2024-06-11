@@ -56,7 +56,7 @@ impl CsrfState {
 async fn handle_github_callback(
     jar: CookieJar,
     State(jwt_keys): State<JwtKeys>,
-    State(public_domain): State<AbsoluteUri>,
+    State(domain_name): State<AbsoluteUri>,
     State(mut rds): State<RdPool>,
     State(db): State<PgPool>,
     State(oauth): State<OAuthClients>,
@@ -78,7 +78,7 @@ async fn handle_github_callback(
         let tokens = init_token_family(&mut rds, &jwt_keys, user_id).await?;
         trace!("{user_id} logged in with {auth_provider}");
         Ok((
-            tokens.add_cookies(jar, &public_domain),
+            tokens.add_cookies(jar),
             Html(format!("<h1>Authenticated with {auth_provider}</h1>")),
         ))
         // session cookie based auth part
@@ -94,7 +94,7 @@ async fn handle_github_callback(
         trace!("{user_id} registered with {auth_provider}");
 
         Ok((
-            tokens.add_cookies(jar, &public_domain),
+            tokens.add_cookies(jar),
             Html(format!("<h1>Authenticated with {auth_provider}</h1>")),
         ))
         // session cookie based auth part

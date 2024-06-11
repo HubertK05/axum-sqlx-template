@@ -18,8 +18,8 @@ use crate::state::Environment;
 const ADDRESS: &str = "ADDRESS";
 const DATABASE_URL: &str = "DATABASE_URL";
 const REDIS_URL: &str = "REDIS_URL";
-const PUBLIC_DOMAIN: &str = "PUBLIC_DOMAIN";
-const REQUIRED: &[&str] = &[ADDRESS, DATABASE_URL, PUBLIC_DOMAIN, REDIS_URL];
+const DOMAIN_NAME: &str = "DOMAIN_NAME";
+const REQUIRED: &[&str] = &[ADDRESS, DATABASE_URL, DOMAIN_NAME, REDIS_URL];
 const LOCAL_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 3000);
 
 #[derive(Debug)]
@@ -28,7 +28,7 @@ pub struct Configuration {
     pub address: SocketAddr,
     pub database_url: String,
     pub redis_url: String,
-    pub public_domain: AbsoluteUri,
+    pub domain_name: AbsoluteUri,
     pub oauth: OAuthConfiguration,
     pub jwt: JwtConfiguration,
     pub smtp: SmtpConfiguration,
@@ -122,10 +122,10 @@ impl Configuration {
 
         let redis_url: String = var(REDIS_URL).unwrap();
 
-        let public_domain: AbsoluteUri = var(PUBLIC_DOMAIN)
+        let domain_name: AbsoluteUri = var(DOMAIN_NAME)
             .unwrap()
             .parse()
-            .expect("Invalid URI format for PUBLIC_DOMAIN");
+            .expect("Invalid URI format for DOMAIN_NAME");
 
         let oauth: OAuthConfiguration = OAuthConfiguration::from_env();
 
@@ -138,7 +138,7 @@ impl Configuration {
             address,
             database_url,
             redis_url,
-            public_domain,
+            domain_name,
             oauth,
             jwt,
             smtp,
@@ -158,7 +158,7 @@ impl Configuration {
 
         let redis_url: String = config.get(REDIS_URL).unwrap();
 
-        let public_domain: AbsoluteUri = config.get(PUBLIC_DOMAIN).unwrap_or_else(|e| {
+        let domain_name: AbsoluteUri = config.get(DOMAIN_NAME).unwrap_or_else(|e| {
             if matches!(e, ConfigError::NotFound(_)) {
                 AbsoluteUri::from_addr(&address)
             } else {
@@ -177,7 +177,7 @@ impl Configuration {
             address,
             database_url,
             redis_url,
-            public_domain,
+            domain_name,
             oauth,
             jwt,
             smtp,
@@ -265,7 +265,7 @@ impl<'de> Visitor<'de> for AbsoluteUriVisitor {
     type Value = AbsoluteUri;
 
     fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-        write!(formatter, "absolute URI to the public domain")
+        write!(formatter, "absolute URI to the domain name")
     }
 
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>

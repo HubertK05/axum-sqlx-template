@@ -1,3 +1,4 @@
+use crate::auth::safe_cookie;
 use crate::errors::AppError;
 use crate::state::RdPool;
 use axum::extract::{FromRef, FromRequestParts};
@@ -10,8 +11,6 @@ use redis::{AsyncCommands, Expiry, RedisError};
 use std::str::FromStr;
 use time::Duration;
 use uuid::Uuid;
-use crate::auth::safe_cookie;
-use crate::config::AbsoluteUri;
 
 const SESSION_COOKIE_NAME: &str = "session";
 const SESSION_MAX_AGE: Duration = Duration::days(7);
@@ -21,7 +20,10 @@ impl Session {
     pub async fn set<'c>(rds: &mut RdPool, user_id: &Uuid) -> Result<Cookie<'c>, RedisError> {
         let session_id = Uuid::new_v4();
         rds.set_ex(Self::key(&session_id), user_id, 60 * 10).await?;
-        Ok(safe_cookie((SESSION_COOKIE_NAME, session_id.to_string()), SESSION_MAX_AGE))
+        Ok(safe_cookie(
+            (SESSION_COOKIE_NAME, session_id.to_string()),
+            SESSION_MAX_AGE,
+        ))
     }
 
     pub async fn get(rds: &mut RdPool, session_id: &Uuid) -> Result<Option<Uuid>, RedisError> {

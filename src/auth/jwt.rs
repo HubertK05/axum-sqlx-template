@@ -1,4 +1,4 @@
-use std::cmp::max;
+use crate::auth::safe_cookie;
 use crate::config::{AbsoluteUri, JwtConfiguration};
 use crate::errors::AppError;
 use crate::state::JwtKeys;
@@ -15,9 +15,8 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation}
 use redis::{cmd, AsyncCommands, RedisResult};
 use redis_test::{MockCmd, MockRedisConnection};
 use serde::{Deserialize, Serialize};
-use time::{Duration};
+use time::Duration;
 use uuid::Uuid;
-use crate::auth::safe_cookie;
 
 const JWT_ACCESS_TOKEN_EXPIRY: Duration = Duration::minutes(5);
 const JWT_REFRESH_TOKEN_EXPIRY: Duration = Duration::days(7);
@@ -42,11 +41,11 @@ impl TokenPair {
     pub fn add_cookies(self, jar: CookieJar) -> CookieJar {
         let access = safe_cookie(
             (JWT_ACCESS_COOKIE_NAME, self.access),
-            JWT_ACCESS_TOKEN_EXPIRY
+            JWT_ACCESS_TOKEN_EXPIRY,
         );
         let refresh = safe_cookie(
             (JWT_REFRESH_COOKIE_NAME, self.refresh),
-            JWT_REFRESH_TOKEN_EXPIRY
+            JWT_REFRESH_TOKEN_EXPIRY,
         );
 
         jar.add(access).add(refresh)

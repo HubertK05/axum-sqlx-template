@@ -55,7 +55,7 @@ async fn main() {
 
     info!(
         "listening on {} with domain at {}",
-        &addr, &config.public_domain
+        &addr, &config.domain_name
     );
 
     axum::serve(

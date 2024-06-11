@@ -2,6 +2,7 @@ use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use axum_extra::extract::cookie::{Cookie, SameSite};
+use lettre::Address;
 use serde::Deserialize;
 use time::Duration;
 
@@ -25,11 +26,7 @@ pub fn is_correct_password(password: String, password_hash: String) -> bool {
         .is_ok()
 }
 
-
-pub fn safe_cookie<'c>(
-    base: impl Into<Cookie<'c>>,
-    max_age: Duration,
-) -> Cookie<'c> {
+pub fn safe_cookie<'c>(base: impl Into<Cookie<'c>>, max_age: Duration) -> Cookie<'c> {
     // TODO: sign cookie
     // TODO: add domain in production
     // As per the newer RFC 6265 it's no longer necessary to include the . in front of the domain
@@ -47,6 +44,7 @@ pub fn safe_cookie<'c>(
 #[derive(Deserialize)]
 pub struct RegistrationForm {
     pub login: String,
+    pub email: Address,
     pub password: String,
 }
 
