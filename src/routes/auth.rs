@@ -16,7 +16,7 @@ use axum::{async_trait, Json, RequestPartsExt, Router};
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
 use lettre::Address;
-use redis::{AsyncCommands, Expiry, RedisError, RedisResult};
+use redis::{AsyncCommands, Expiry, FromRedisValue, RedisError, RedisResult, ToRedisArgs};
 use serde::Deserialize;
 use sqlx::types::Uuid;
 use sqlx::PgPool;
@@ -27,6 +27,7 @@ pub mod jwt;
 mod oauth;
 
 const VERIFICATION_EXPIRY: Duration = Duration::days(7);
+const PASSWORD_CHANGE_EXPIRY: Duration = Duration::minutes(5);
 
 // /verify endpoint is currently GET, because there is no frontend and the request goes directly to the backend
 pub fn router() -> AppRouter {
@@ -36,6 +37,7 @@ pub fn router() -> AppRouter {
         .route("/logout", post(logout))
         .route("/session", get(session))
         .route("/verify", get(verify_address))
+        .route("/password", post(request_password_change))
         .nest("/oauth2", oauth::router())
 }
 
@@ -156,6 +158,25 @@ async fn verify_address(
     Ok(())
 }
 
+#[derive(Deserialize)]
+struct PasswordChangeRequestInput {
+    email: String,
+}
+
+async fn request_password_change(
+    State(mut rds): State<RdPool>,
+    State(mailer): State<Mailer>,
+    Json(body): Json<PasswordChangeRequestInput>,
+) -> crate::Result<impl IntoResponse> {
+    let token = Uuid::new_v4();
+    let to = Address::from_str(&body.email).map_err(|e| AppError::exp(StatusCode::UNPROCESSABLE_ENTITY, format!("Invalid email address: {e}")))?;
+    
+    mailer.send_password_change_request_mail(token, to.clone(), Some(PASSWORD_CHANGE_EXPIRY)).await.context("Failed to send mail")?;
+    VerificationEntry::set(&mut rds, token, to.to_string()).await?;
+
+    Ok(())
+}
+
 async fn logout(claims: Claims, State(mut rds): State<RdPool>) -> crate::Result<impl IntoResponse> {
 
     ClientSession::invalidate(&mut rds, &claims.session_id).await?;
@@ -246,12 +267,12 @@ fn verification_entry_key(token: Uuid) -> String {
 }
 
 impl VerificationEntry {
-    async fn set(rds: &mut impl AsyncRedisConn, token: Uuid, user_id: Uuid) -> Result<(), AppError> {
-        Ok(rds.set_ex(verification_entry_key(token), user_id, VERIFICATION_EXPIRY.whole_seconds() as u64).await?)
+    async fn set<T: ToRedisArgs + Send + Sync>(rds: &mut impl AsyncRedisConn, token: Uuid, value: T) -> Result<(), AppError> {
+        Ok(rds.set_ex(verification_entry_key(token), value, VERIFICATION_EXPIRY.whole_seconds() as u64).await?)
     }
 
     /// Retrieves user_id from token
-    async fn get(rds: &mut impl AsyncRedisConn, token: Uuid) -> RedisResult<Option<Uuid>> {
+    async fn get<T: FromRedisValue>(rds: &mut impl AsyncRedisConn, token: Uuid) -> RedisResult<T> {
         rds.get(verification_entry_key(token)).await
     }
 
