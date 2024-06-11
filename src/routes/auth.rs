@@ -57,7 +57,7 @@ async fn register(
     Json(body): Json<RegistrationForm>,
 ) -> crate::Result<impl IntoResponse> {
     // TODO: check for session
-    let entropy = zxcvbn::zxcvbn(&body.password, &[&body.login]);
+    let entropy = zxcvbn::zxcvbn(&body.password, &[&body.login, body.email.as_ref()]);
     if let Some(feedback) = entropy.feedback() {
         let warning = feedback
             .warning()
@@ -207,11 +207,38 @@ async fn change_password(
     Query(q): Query<PasswordChangeTokenQuery>,
     Json(body): Json<PasswordChangeInput>,
 ) -> crate::Result<impl IntoResponse> {
-    // TODO check password strength
     let Some(target_address): Option<String> = VerificationEntry::get(&mut rds, q.token).await?
     else {
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Access denied"));
     };
+
+    let login = query!(r#"
+    SELECT login
+    FROM users
+    WHERE email = $1
+    "#, target_address).fetch_one(&db).await?.login;
+
+
+    let mut inputs = vec![target_address.as_ref()];
+    inputs.extend(login.as_deref());
+
+    let entropy = zxcvbn::zxcvbn(&body.password, inputs.as_slice());
+    if let Some(feedback) = entropy.feedback() {
+        let warning = feedback
+            .warning()
+            .map_or(String::from("No warning. "), |w| w.to_string());
+        let suggestions = feedback
+            .suggestions()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>()
+            .join(", ");
+        return Err(AppError::exp(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("Password is too weak: {warning}{suggestions}"),
+        ));
+    }
+
     // TODO consider converting to Address
     // let email = Address::try_from(target_address).unwrap();
     VerificationEntry::delete(&mut rds, q.token).await?;
