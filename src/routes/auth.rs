@@ -140,11 +140,12 @@ async fn verify_address(
     State(mut rds): State<RdPool>,
     Query(token): Query<Uuid>,
 ) -> crate::Result<impl IntoResponse> {
-    let Some(user_id) = VerificationEntry::delete(&mut rds, token).await? else {
+    let Some(user_id) = VerificationEntry::get(&mut rds, token).await? else {
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid token"))
     };
 
     verify_account(&db, user_id).await?;
+    VerificationEntry::delete(&mut rds, token).await?;
 
     Ok(())
 }
@@ -236,23 +237,28 @@ async fn send_verification_mail(mailer: Mailer, token: Uuid, username: impl Into
     let callback_url = format!("{VERIFICATION_PATH}?token={token}");
     let mail = AccountVerificationMail::new(username, to,  Some(VERIFICATION_EXPIRY), callback_url);
     
-    let _ = mailer.send_mail(mail).await.context("Failed to send account verification mail")?;
+    mailer.send_mail(mail).await.context("Failed to send account verification mail")?;
     Ok(())
 }
 
 struct VerificationEntry;
 
-fn verification_entry_key(token_id: Uuid) -> String {
-    format!("verification:token:{token_id}")
+fn verification_entry_key(token: Uuid) -> String {
+    format!("verification:token:{token}")
 }
 
 impl VerificationEntry {
-    async fn set(rds: &mut impl AsyncRedisConn, token_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
-        Ok(rds.set_ex(verification_entry_key(token_id), user_id, VERIFICATION_EXPIRY.whole_seconds() as u64).await?)
+    async fn set(rds: &mut impl AsyncRedisConn, token: Uuid, user_id: Uuid) -> Result<(), AppError> {
+        Ok(rds.set_ex(verification_entry_key(token), user_id, VERIFICATION_EXPIRY.whole_seconds() as u64).await?)
     }
 
-    async fn delete(rds: &mut impl AsyncRedisConn, token_id: Uuid) -> RedisResult<Option<Uuid>> {
-        rds.del(verification_entry_key(token_id)).await
+    /// Retrieves user_id from token
+    async fn get(rds: &mut impl AsyncRedisConn, token: Uuid) -> RedisResult<Option<Uuid>> {
+        rds.get(verification_entry_key(token)).await
+    }
+
+    async fn delete(rds: &mut impl AsyncRedisConn, token: Uuid) -> RedisResult<bool> {
+        rds.del(verification_entry_key(token)).await
     }
 }
 
