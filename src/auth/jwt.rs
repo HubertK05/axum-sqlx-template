@@ -1,3 +1,4 @@
+use std::cmp::max;
 use crate::config::{AbsoluteUri, JwtConfiguration};
 use crate::errors::AppError;
 use crate::state::JwtKeys;
@@ -14,8 +15,9 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation}
 use redis::{cmd, AsyncCommands, RedisResult};
 use redis_test::{MockCmd, MockRedisConnection};
 use serde::{Deserialize, Serialize};
-use time::{Duration, OffsetDateTime};
+use time::{Duration};
 use uuid::Uuid;
+use crate::auth::safe_cookie;
 
 const JWT_ACCESS_TOKEN_EXPIRY: Duration = Duration::minutes(5);
 const JWT_REFRESH_TOKEN_EXPIRY: Duration = Duration::days(7);
@@ -37,37 +39,18 @@ pub struct TokenPair {
 }
 
 impl TokenPair {
-    pub fn add_cookies(self, jar: CookieJar, public_domain: &AbsoluteUri) -> CookieJar {
-        let access = cookie(
+    pub fn add_cookies(self, jar: CookieJar) -> CookieJar {
+        let access = safe_cookie(
             (JWT_ACCESS_COOKIE_NAME, self.access),
-            JWT_ACCESS_TOKEN_EXPIRY,
-            public_domain,
+            JWT_ACCESS_TOKEN_EXPIRY
         );
-        let refresh = cookie(
+        let refresh = safe_cookie(
             (JWT_REFRESH_COOKIE_NAME, self.refresh),
-            JWT_REFRESH_TOKEN_EXPIRY,
-            public_domain,
+            JWT_REFRESH_TOKEN_EXPIRY
         );
 
         jar.add(access).add(refresh)
     }
-}
-
-fn cookie<'c>(
-    base: impl Into<Cookie<'c>>,
-    max_age: Duration,
-    public_domain: &AbsoluteUri,
-) -> Cookie<'c> {
-    // TODO: add domain in production
-    // https://stackoverflow.com/questions/1062963/how-do-browser-cookie-domains-work
-    // https://stackoverflow.com/questions/1134290/cookies-on-localhost-with-explicit-domain
-    Cookie::build(base)
-        .expires(OffsetDateTime::now_utc() + max_age)
-        .secure(true)
-        .http_only(true)
-        .same_site(SameSite::Strict)
-        .path("/")
-        .build()
 }
 
 impl Claims {

@@ -8,23 +8,20 @@ use axum_extra::extract::cookie::{Cookie, SameSite};
 use axum_extra::extract::CookieJar;
 use redis::{AsyncCommands, Expiry, RedisError};
 use std::str::FromStr;
+use time::Duration;
 use uuid::Uuid;
+use crate::auth::safe_cookie;
+use crate::config::AbsoluteUri;
 
 const SESSION_COOKIE_NAME: &str = "session";
-
+const SESSION_MAX_AGE: Duration = Duration::days(7);
 pub struct Session;
 
 impl Session {
     pub async fn set<'c>(rds: &mut RdPool, user_id: &Uuid) -> Result<Cookie<'c>, RedisError> {
         let session_id = Uuid::new_v4();
         rds.set_ex(Self::key(&session_id), user_id, 60 * 10).await?;
-        // TODO: add domain and expiration in production
-        Ok(Cookie::build((SESSION_COOKIE_NAME, session_id.to_string()))
-            .http_only(true)
-            .secure(true)
-            .same_site(SameSite::Strict)
-            .path("/")
-            .build())
+        Ok(safe_cookie((SESSION_COOKIE_NAME, session_id.to_string()), SESSION_MAX_AGE))
     }
 
     pub async fn get(rds: &mut RdPool, session_id: &Uuid) -> Result<Option<Uuid>, RedisError> {
