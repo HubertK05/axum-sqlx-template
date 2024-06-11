@@ -173,8 +173,8 @@ async fn insert_into_users(
 ) -> sqlx::Result<Uuid> {
     Ok(query!(
         r#"
-    INSERT INTO users (password)
-    VALUES ($1)
+    INSERT INTO users (password, verified)
+    VALUES ($1, true)
     RETURNING id
     "#,
         password

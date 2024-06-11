@@ -31,6 +31,7 @@ pub struct Configuration {
     pub public_domain: AbsoluteUri,
     pub oauth: OAuthConfiguration,
     pub jwt: JwtConfiguration,
+    pub smtp: SmtpConfiguration,
 }
 
 #[derive(Debug, Deserialize)]
@@ -78,6 +79,23 @@ impl JwtConfiguration {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SmtpConfiguration {
+    pub relay: String,
+    pub email: String,
+    pub password: String,
+}
+
+impl SmtpConfiguration {
+    fn from_env() -> Self {
+        Self {
+            relay: var("SMTP_RELAY").unwrap(),
+            email: var("SMTP_EMAIL").unwrap(),
+            password: var("SMTP_PASSWORD").unwrap(),
+        }
+    }
+}
+
 impl Configuration {
     fn from_env(environment: Environment) -> Self {
         let mut missing = vec![];
@@ -113,6 +131,8 @@ impl Configuration {
 
         let jwt: JwtConfiguration = JwtConfiguration::from_env();
 
+        let smtp: SmtpConfiguration = SmtpConfiguration::from_env();
+
         Self {
             environment,
             address,
@@ -121,6 +141,7 @@ impl Configuration {
             public_domain,
             oauth,
             jwt,
+            smtp,
         }
     }
 
@@ -149,6 +170,8 @@ impl Configuration {
 
         let jwt: JwtConfiguration = config.get("jwt").unwrap();
 
+        let smtp: SmtpConfiguration = config.get("smtp").unwrap();
+
         Self {
             environment,
             address,
@@ -157,6 +180,7 @@ impl Configuration {
             public_domain,
             oauth,
             jwt,
+            smtp,
         }
     }
 }

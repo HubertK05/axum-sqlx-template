@@ -1,8 +1,11 @@
 CREATE TABLE users(
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     login TEXT,
+    email TEXT,
     password TEXT,
-    UNIQUE (login)
+    verified BOOLEAN NOT NULL,
+    UNIQUE (login),
+    UNIQUE (email)
 );
 
 CREATE TYPE credential_provider AS ENUM(

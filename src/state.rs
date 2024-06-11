@@ -1,6 +1,7 @@
 use crate::auth::oauth::OAuthClients;
 use crate::config::{AbsoluteUri, Configuration, JwtConfiguration};
 use crate::errors::AppError;
+use crate::mailer::Mailer;
 use anyhow::anyhow;
 use argon2::password_hash::Encoding;
 use axum::extract::FromRef;
@@ -15,10 +16,6 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::time::Duration;
 use tracing::log::LevelFilter;
-
-// use crate::extensions::mail::Mailer;
-// use crate::extensions::oauth2::OAuth;
-// use crate::extensions::verification::Verification;
 pub type RdPool = redis::aio::ConnectionManager;
 
 #[derive(FromRef, Clone)]
@@ -30,9 +27,11 @@ pub struct AppState {
     public_domain: AbsoluteUri,
     jwt_keys: JwtKeys,
     // verification: Verification,
-    // mailer: Mailer,
+    mailer: Mailer,
     environment: Environment,
 }
+
+const FRONTEND_URL: &str = "http://localhost:3000";
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
@@ -71,9 +70,8 @@ impl AppState {
             .get_connection_manager()
             .await
             .unwrap();
-        // let verification = Verification::new();
 
-        // let mailer = Mailer::new(frontend.url.clone());
+        let mailer = Mailer::new(FRONTEND_URL.to_string(), &config.smtp);
 
         Self {
             db,
@@ -82,8 +80,7 @@ impl AppState {
             oauth,
             public_domain,
             jwt_keys,
-            // verification,
-            // mailer,
+            mailer,
             environment: config.environment,
         }
     }
