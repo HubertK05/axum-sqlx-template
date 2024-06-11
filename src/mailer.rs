@@ -10,6 +10,7 @@ use lettre::transport::smtp::Error;
 use lettre::{Address, AsyncTransport, Message, Tokio1Executor};
 use templates::AccountVerificationMail;
 use templates::Mail;
+use templates::PasswordChangeRequestMail;
 use time::Duration;
 use uuid::Uuid;
 
@@ -17,6 +18,7 @@ use crate::config::SmtpConfiguration;
 
 const APP_NAME: &str = "Template";
 const VERIFICATION_PATH: &str = "/auth/verify";
+const PASSWORD_CHANGE_PATH: &str = "/auth/password/callback";
 
 #[derive(FromRef, Clone)]
 pub struct Mailer {
@@ -67,4 +69,12 @@ impl Mailer {
         
         self.send_mail(mail).await
     }
+
+    pub async fn send_password_change_request_mail(&self, token: Uuid, to: Address, expiry: Option<Duration>) -> Result<Response, Error> {
+        let callback_url = format!("{}{PASSWORD_CHANGE_PATH}?token={token}", self.frontend_domain);
+        let mail = PasswordChangeRequestMail::new(to,  expiry, callback_url);
+        
+        self.send_mail(mail).await
+    }
+
 }
