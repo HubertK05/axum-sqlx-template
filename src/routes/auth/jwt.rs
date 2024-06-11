@@ -14,9 +14,7 @@ use sqlx::PgPool;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
-use crate::auth::jwt::{
-    decode_jwt, init_token_family, invalidate, refresh, Claims, JWT_REFRESH_COOKIE_NAME,
-};
+use crate::auth::jwt::{init_token_family, invalidate, refresh_jwt_session, Claims};
 use crate::auth::{hash_password, is_correct_password, LoginForm, RegistrationForm};
 use crate::errors::DbErrMap;
 use crate::mailer::Mailer;
@@ -133,14 +131,7 @@ async fn refresh_session(
     State(mut rds): State<RdPool>,
     jar: CookieJar,
 ) -> crate::Result<impl IntoResponse> {
-    let Some(cookie) = jar.get(JWT_REFRESH_COOKIE_NAME) else {
-        return Err(AppError::exp(StatusCode::FORBIDDEN, "Session expired"));
-    };
-    let claims = decode_jwt(cookie.value(), jwt_keys.decoding_refresh())
-        .inspect_err(|e| debug!("Refresh token: {e}"))
-        .map_err(|_| AppError::exp(StatusCode::FORBIDDEN, "Session expired"))?;
-    let tokens = refresh(&mut rds, claims, jwt_keys).await?;
-    return Ok(tokens.add_cookies(jar));
+    refresh_jwt_session(&mut rds, jar, jwt_keys).await
 }
 
 async fn logout(claims: Claims, State(mut rds): State<RdPool>) -> crate::Result<impl IntoResponse> {

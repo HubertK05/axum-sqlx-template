@@ -114,11 +114,11 @@ async fn register_tokens(
     refresh_claims: Claims,
 ) -> Result<TokenPair, AppError> {
     let refresh_token =
-        encode_jwt(refresh_claims, jwt_keys.encoding_refresh()).context("Failed to encode JWT")?;
+        encode_jwt(refresh_claims, jwt_keys.encoding_refresh()).context("Failed to encode refresh JWT")?;
 
     let access_claims = refresh_claims.new_member();
     let access_token =
-        encode_jwt(access_claims, jwt_keys.encoding_access()).context("Failed to encode JWT")?;
+        encode_jwt(access_claims, jwt_keys.encoding_access()).context("Failed to encode access JWT")?;
 
     TokenFamily::set_valid(rds, refresh_claims).await?;
 
@@ -128,15 +128,24 @@ async fn register_tokens(
     })
 }
 
-pub async fn refresh(
+pub async fn refresh_jwt_session<'c>(
     rds: &mut impl AsyncRedisConn,
-    refresh_claims: Claims,
-    jwt_secrets: JwtKeys,
-) -> Result<TokenPair, AppError> {
-    if TokenFamily::is_valid_refresh_token(rds, refresh_claims).await? {
-        continue_token_family(rds, &jwt_secrets, refresh_claims.new_member()).await
+    jar: CookieJar,
+    jwt_keys: JwtKeys,
+) -> Result<CookieJar, AppError> {
+    let Some(cookie) = jar.get(JWT_REFRESH_COOKIE_NAME) else {
+        return Err(AppError::exp(StatusCode::FORBIDDEN, "Session expired"));
+    };
+
+    let claims = decode_jwt(cookie.value(), jwt_keys.decoding_refresh())
+        .inspect_err(|e| debug!("Refresh token: {e}"))
+        .map_err(|_| AppError::exp(StatusCode::FORBIDDEN, "Session expired"))?;
+
+    if TokenFamily::is_valid_refresh_token(rds, claims).await? {
+        let token_pair = continue_token_family(rds, &jwt_keys, claims.new_member()).await?;
+        return Ok(token_pair.add_cookies(jar))
     } else {
-        TokenFamily::invalidate(rds, refresh_claims.family).await?;
+        TokenFamily::invalidate(rds, claims.family).await?;
         Err(AppError::exp(
             StatusCode::FORBIDDEN,
             "Invalid refresh token",
@@ -182,7 +191,7 @@ fn encode_jwt(claims: Claims, secret_key: &EncodingKey) -> jsonwebtoken::errors:
     encode(&Header::default(), &claims, secret_key)
 }
 
-pub fn decode_jwt(token: &str, secret_key: &DecodingKey) -> jsonwebtoken::errors::Result<Claims> {
+fn decode_jwt(token: &str, secret_key: &DecodingKey) -> jsonwebtoken::errors::Result<Claims> {
     let mut validation = Validation::default();
     validation.leeway = 5;
 
