@@ -45,7 +45,7 @@ pub fn router() -> AppRouter {
 #[derive(Deserialize)]
 struct RegistrationForm {
     login: String,
-    email: String,
+    email: Address,
     password: String,
 }
 
@@ -57,14 +57,6 @@ async fn register(
     Json(body): Json<RegistrationForm>,
 ) -> crate::Result<impl IntoResponse> {
     // TODO: check for session
-
-    let target_address = Address::from_str(body.email.as_ref()).map_err(|e| {
-        AppError::exp(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            format!("Invalid email: {e}"),
-        )
-    })?;
-
     let entropy = zxcvbn::zxcvbn(&body.password, &[&body.login]);
     if let Some(feedback) = entropy.feedback() {
         let warning = feedback
@@ -90,9 +82,9 @@ async fn register(
     VALUES ($1, $2, $3, false)
     RETURNING id
     "#,
-        &body.login,
+        &body.login.as_str(),
         password_hash,
-        &body.email,
+        AsRef::<str>::as_ref(&body.email),
     )
     .fetch_one(&db)
     .await
@@ -105,11 +97,12 @@ async fn register(
     .id;
 
     let token_id = Uuid::new_v4();
+    // TODO: reconsider changing order of sending email and creating a token entry in Redis
     mailer
         .send_verification_mail(
             token_id,
             &body.login,
-            target_address,
+            body.email,
             Some(VERIFICATION_EXPIRY),
         )
         .await
@@ -180,7 +173,7 @@ async fn verify_address(
 
 #[derive(Deserialize)]
 struct PasswordChangeRequestInput {
-    email: String,
+    email: Address,
 }
 
 async fn request_password_change(
@@ -189,18 +182,11 @@ async fn request_password_change(
     Json(body): Json<PasswordChangeRequestInput>,
 ) -> crate::Result<impl IntoResponse> {
     let token = Uuid::new_v4();
-    let to = Address::from_str(&body.email).map_err(|e| {
-        AppError::exp(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            format!("Invalid email address: {e}"),
-        )
-    })?;
-
     mailer
-        .send_password_change_request_mail(token, to.clone(), Some(PASSWORD_CHANGE_EXPIRY))
+        .send_password_change_request_mail(token, body.email.clone(), Some(PASSWORD_CHANGE_EXPIRY))
         .await
         .context("Failed to send mail")?;
-    VerificationEntry::set(&mut rds, token, to.to_string()).await?;
+    VerificationEntry::set(&mut rds, token, body.email.to_string()).await?;
 
     Ok(())
 }
@@ -221,6 +207,7 @@ async fn change_password(
     Query(q): Query<PasswordChangeTokenQuery>,
     Json(body): Json<PasswordChangeInput>,
 ) -> crate::Result<impl IntoResponse> {
+    // TODO check password strength
     let Some(target_address): Option<String> = VerificationEntry::get(&mut rds, q.token).await?
     else {
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Access denied"));
@@ -317,10 +304,6 @@ where
 
 struct VerificationEntry;
 
-fn verification_entry_key(token: Uuid) -> String {
-    format!("verification:token:{token}")
-}
-
 impl VerificationEntry {
     async fn set<T: ToRedisArgs + Send + Sync>(
         rds: &mut impl AsyncRedisConn,
@@ -329,7 +312,7 @@ impl VerificationEntry {
     ) -> Result<(), AppError> {
         Ok(rds
             .set_ex(
-                verification_entry_key(token),
+                Self::key(token),
                 value,
                 VERIFICATION_EXPIRY.whole_seconds() as u64,
             )
@@ -338,11 +321,15 @@ impl VerificationEntry {
 
     /// Retrieves user_id from token
     async fn get<T: FromRedisValue>(rds: &mut impl AsyncRedisConn, token: Uuid) -> RedisResult<T> {
-        rds.get(verification_entry_key(token)).await
+        rds.get(Self::key(token)).await
     }
 
     async fn delete(rds: &mut impl AsyncRedisConn, token: Uuid) -> RedisResult<bool> {
-        rds.del(verification_entry_key(token)).await
+        rds.del(Self::key(token)).await
+    }
+
+    fn key(token: Uuid) -> String {
+        format!("verification:token:{token}")
     }
 }
 
