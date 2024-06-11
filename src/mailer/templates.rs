@@ -86,7 +86,7 @@ impl From<PasswordChangeRequestMail> for Mail {
         let body = html! {
             h1 {"Hello!"}
             p { "This is a request for password change. No changes have been made to your account." }
-            p { "If you did not intend to receive this message, you can safely ignore it. Only someone who knows your email address can change the password." }
+            p { "If you did not intend to receive this message, you can safely ignore it. Only someone can get to your email account can change the password." }
             (duration)
             a href={ (val.callback_uri) } {
                 "Click here to change your password"
