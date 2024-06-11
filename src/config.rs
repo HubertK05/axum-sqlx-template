@@ -25,7 +25,7 @@ pub struct Configuration {
     pub environment: Environment,
     pub address: SocketAddr,
     pub database_url: String,
-    pub public_domain: AbsoluteUri,
+    pub domain_name: AbsoluteUri,
 }
 
 impl Configuration {
@@ -60,7 +60,7 @@ impl Configuration {
             environment,
             address,
             database_url,
-            public_domain,
+            domain_name: public_domain,
         }
     }
 
@@ -87,7 +87,7 @@ impl Configuration {
             environment,
             address,
             database_url,
-            public_domain,
+            domain_name: public_domain,
         }
     }
 }
@@ -117,7 +117,7 @@ impl AbsoluteUri {
     }
 
     fn domain(&self) -> String {
-        format!("{}://{}", self.0.scheme_str().unwrap(), self.0.authority().unwrap())
+        self.0.host().unwrap().to_string()
     }
 }
 
@@ -125,12 +125,14 @@ impl TryFrom<Uri> for AbsoluteUri {
     type Error = anyhow::Error;
 
     fn try_from(value: Uri) -> Result<Self, Self::Error> {
-        let Some(scheme) = value.scheme_str() else {
-            bail!("missing URI scheme")
-        };
-        match scheme {
-            "http" | "https" => (),
-            _ => bail!("invalid URI protocol, expected http or https")
+        if let Some(scheme) = value.scheme_str() {
+            match scheme {
+                "http" | "https" => (),
+                _ => bail!("invalid URI protocol, expected http or https")
+            }
+        }
+        if value.host().is_none() {
+            bail!("use absolute domain name in URI")
         }
         Ok(Self(value))
     }
@@ -138,7 +140,7 @@ impl TryFrom<Uri> for AbsoluteUri {
 
 impl Display for AbsoluteUri {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.domain())
+        write!(f, "{}", self.0.authority().unwrap())
     }
 }
 
@@ -209,4 +211,12 @@ fn relative_path() {
     let v: Result<AbsoluteUri, serde::de::value::Error> =
         s.into_deserializer().deserialize_string(AbsoluteUriVisitor);
     assert!(v.is_err())
+}
+
+#[test]
+fn domain_only() {
+    let s: String = String::from("tokio.rs");
+    let v: Result<AbsoluteUri, serde::de::value::Error> =
+        s.into_deserializer().deserialize_string(AbsoluteUriVisitor);
+    assert!(v.is_ok())
 }

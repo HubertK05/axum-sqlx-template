@@ -41,7 +41,7 @@ async fn main() {
 
     let router = routes::app(app_state);
     
-    info!("listening on {} with domain at {}", &addr, &config.public_domain);
+    info!("listening on {} with domain at {}", &addr, &config.domain_name);
 
     axum::serve(
         listener,
