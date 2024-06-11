@@ -1,6 +1,6 @@
 use crate::auth::session::Claims;
 use crate::auth::session::Session;
-use crate::auth::{hash_password, is_correct_password, LoginForm, RegistrationForm};
+use crate::auth::{PasswordStrength, check_password_strength, hash_password, is_correct_password, LoginForm, RegistrationForm};
 use crate::errors::{AppError, DbErrMap};
 use crate::mailer::Mailer;
 use crate::routes::auth::{VerificationEntry, VERIFICATION_EXPIRY};
@@ -32,23 +32,8 @@ async fn register(
     Json(body): Json<RegistrationForm>,
 ) -> crate::Result<impl IntoResponse> {
     // TODO: check for session
-    let entropy = zxcvbn::zxcvbn(&body.password, &[&body.login, body.email.as_ref()]);
-    if let Some(feedback) = entropy.feedback() {
-        let warning = feedback
-            .warning()
-            .map_or(String::from("No warning. "), |w| w.to_string());
-        let suggestions = feedback
-            .suggestions()
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<String>>()
-            .join(", ");
-        return Err(AppError::exp(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            format!("Password is too weak: {warning}{suggestions}"),
-        ));
-    }
-
+    body.check_password_strength()?;
+    
     let password_hash = hash_password(body.password);
 
     let user_id = query!(

@@ -1,4 +1,4 @@
-use crate::auth::hash_password;
+use crate::auth::{check_password_strength, hash_password};
 use crate::errors::AppError;
 use crate::mailer::Mailer;
 use crate::routes::auth::{
@@ -79,23 +79,8 @@ async fn change_password(
 
     let mut inputs = vec![target_address.as_ref()];
     inputs.extend(login.as_deref());
-
-    let entropy = zxcvbn::zxcvbn(&body.password, inputs.as_slice());
-    if let Some(feedback) = entropy.feedback() {
-        let warning = feedback
-            .warning()
-            .map_or(String::from("No warning. "), |w| w.to_string());
-        let suggestions = feedback
-            .suggestions()
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<String>>()
-            .join(", ");
-        return Err(AppError::exp(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            format!("Password is too weak: {warning}{suggestions}"),
-        ));
-    }
+    
+    check_password_strength(&body.password, inputs.as_slice())?;
 
     // TODO consider converting to Address
     // let email = Address::try_from(target_address).unwrap();

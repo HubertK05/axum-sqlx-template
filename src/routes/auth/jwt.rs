@@ -4,18 +4,13 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
 use axum::routing::{get, post};
 use axum::{async_trait, debug_handler, Json, RequestPartsExt, Router};
-use axum_extra::extract::cookie::{Cookie, SameSite};
 use axum_extra::extract::CookieJar;
-use jsonwebtoken::errors::{Error, ErrorKind};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use redis::{aio::ConnectionLike, AsyncCommands, RedisResult};
-use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::auth::jwt::{init_token_family, invalidate, refresh_jwt_session, Claims};
-use crate::auth::{hash_password, is_correct_password, LoginForm, RegistrationForm};
+use crate::auth::{PasswordStrength, hash_password, is_correct_password, LoginForm, RegistrationForm};
 use crate::errors::DbErrMap;
 use crate::mailer::Mailer;
 use crate::routes::auth::{VerificationEntry, VERIFICATION_EXPIRY};
@@ -37,25 +32,10 @@ async fn register(
     State(jwt_keys): State<JwtKeys>,
     State(mailer): State<Mailer>,
     State(db): State<PgPool>,
-    Json(body): Json<RegistrationForm>,
+    Json(body): Json<RegistrationForm>, 
 ) -> crate::Result<impl IntoResponse> {
     // TODO: check for session
-    let entropy = zxcvbn::zxcvbn(&body.password, &[&body.login]);
-    if let Some(feedback) = entropy.feedback() {
-        let warning = feedback
-            .warning()
-            .map_or(String::from("No warning. "), |w| w.to_string());
-        let suggestions = feedback
-            .suggestions()
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<String>>()
-            .join(", ");
-        return Err(AppError::exp(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            format!("Password is too weak: {warning}{suggestions}"),
-        ));
-    }
+    body.check_password_strength()?;
 
     let password_hash = hash_password(body.password);
 

@@ -1,10 +1,12 @@
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use axum::http::StatusCode;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use lettre::Address;
 use serde::Deserialize;
 use time::Duration;
+use crate::errors::AppError;
 
 pub mod jwt;
 pub mod oauth;
@@ -52,4 +54,51 @@ pub struct RegistrationForm {
 pub struct LoginForm {
     pub login: String,
     pub password: String,
+}
+
+pub trait PasswordStrength {
+    fn inputs(&self) -> Vec<&str>;
+    fn password(&self) -> &str;
+
+    fn check_password_strength(&self) -> crate::Result<()> {
+        check_password_strength(self.password(), self.inputs().as_slice())
+    }
+}
+
+impl PasswordStrength for RegistrationForm {
+    fn inputs(&self) -> Vec<&str> {
+        vec![self.email.as_ref(), self.login.as_str()]
+    }
+    fn password(&self) -> &str {
+        self.password.as_str()
+    }
+}
+
+impl PasswordStrength for LoginForm {
+    fn inputs(&self) -> Vec<&str> {
+        vec![self.login.as_str()]
+    }
+    fn password(&self) -> &str {
+        self.password.as_str()
+    }
+}
+
+pub fn check_password_strength(password: &str, inputs: &[&str]) -> crate::Result<()>{
+    let entropy = zxcvbn::zxcvbn(password, inputs);
+    if let Some(feedback) = entropy.feedback() {
+        let warning = feedback
+            .warning()
+            .map_or(String::from("No warning. "), |w| w.to_string());
+        let suggestions = feedback
+            .suggestions()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>()
+            .join(", ");
+        return Err(AppError::exp(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("Password is too weak: {warning}{suggestions}"),
+        ));
+    }
+    Ok(())
 }
