@@ -38,6 +38,7 @@ pub fn router() -> AppRouter {
         .route("/session", get(session))
         .route("/verify", get(verify_address))
         .route("/password", post(request_password_change))
+        .route("/password/callback", post(change_password))
         .nest("/oauth2", oauth::router())
 }
 
@@ -177,6 +178,34 @@ async fn request_password_change(
     Ok(())
 }
 
+#[derive(Deserialize)]
+struct PasswordChangeTokenQuery {
+    token: Uuid,
+}
+
+#[derive(Deserialize)]
+struct PasswordChangeInput {
+    password: String,
+}
+
+async fn change_password(
+    State(db): State<PgPool>,
+    State(mut rds): State<RdPool>,
+    Query(q): Query<PasswordChangeTokenQuery>,
+    Json(body): Json<PasswordChangeInput>,
+) -> crate::Result<impl IntoResponse> {
+    let Some(target_address): Option<String> = VerificationEntry::get(&mut rds, q.token).await? else {
+        return Err(AppError::exp(StatusCode::FORBIDDEN, "Access denied"))
+    };
+    
+    VerificationEntry::delete(&mut rds, q.token).await?;
+    let hashed_password = hash(body.password);
+
+    update_password_by_email(&db, target_address, hashed_password).await?;
+
+    Ok(())
+}
+
 async fn logout(claims: Claims, State(mut rds): State<RdPool>) -> crate::Result<impl IntoResponse> {
 
     ClientSession::invalidate(&mut rds, &claims.session_id).await?;
@@ -308,6 +337,20 @@ async fn verify_account(db: &PgPool, user_id: Uuid) -> Result<(), AppError> {
     )
     .execute(db)
     .await?;
+
+    Ok(())
+}
+
+async fn update_password_by_email(db: &PgPool, email: String, new_password_hash: String) -> Result<(), AppError> {
+    query!(
+        r#"
+            UPDATE users
+            SET password = $1
+            WHERE email = $2
+        "#,
+        new_password_hash,
+        email,
+    ).execute(db).await?;
 
     Ok(())
 }
