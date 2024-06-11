@@ -212,7 +212,8 @@ async fn change_password(
     else {
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Access denied"));
     };
-
+    // TODO consider converting to Address
+    // let email = Address::try_from(target_address).unwrap();
     VerificationEntry::delete(&mut rds, q.token).await?;
     let hashed_password = hash(body.password);
 
