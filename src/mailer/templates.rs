@@ -1,4 +1,7 @@
-use lettre::{message::{Mailbox, MultiPart}, Address};
+use lettre::{
+    message::{Mailbox, MultiPart},
+    Address,
+};
 use maud::html;
 use time::Duration;
 
@@ -16,7 +19,12 @@ pub struct AccountVerificationMail {
 }
 
 impl AccountVerificationMail {
-    pub fn new(username: impl Into<String>, to: Address, duration: Option<Duration>, callback_uri: String) -> Self {
+    pub fn new(
+        username: impl Into<String>,
+        to: Address,
+        duration: Option<Duration>,
+        callback_uri: String,
+    ) -> Self {
         Self {
             username: username.into(),
             to,
@@ -28,8 +36,10 @@ impl AccountVerificationMail {
 
 impl From<AccountVerificationMail> for Mail {
     fn from(val: AccountVerificationMail) -> Self {
-        let duration = val.duration.map_or(html! {}, |duration| html! {
-            p { "You have " (duration) " to verify your account" }
+        let duration = val.duration.map_or(html! {}, |duration| {
+            html! {
+                p { "You have " (duration) " to verify your account" }
+            }
         });
 
         let body = html! {
@@ -38,8 +48,9 @@ impl From<AccountVerificationMail> for Mail {
             a href={ (val.callback_uri) } {
                 "Click here to verify your account"
             }
-        }.into_string();
-        
+        }
+        .into_string();
+
         Self {
             to: Mailbox::new(Some(val.username), val.to),
             subject: "Account verification".to_string(),
@@ -66,8 +77,10 @@ impl PasswordChangeRequestMail {
 
 impl From<PasswordChangeRequestMail> for Mail {
     fn from(val: PasswordChangeRequestMail) -> Self {
-        let duration = val.duration.map_or(html! {}, |duration| html! {
-            p { "This link is valid for " (duration) " after issue time." }
+        let duration = val.duration.map_or(html! {}, |duration| {
+            html! {
+                p { "This link is valid for " (duration) " after issue time." }
+            }
         });
 
         let body = html! {
@@ -79,7 +92,7 @@ impl From<PasswordChangeRequestMail> for Mail {
                 "Click here to change your password"
             }
         }.into_string();
-        
+
         Self {
             to: Mailbox::new(None, val.to),
             subject: "Password change request".to_string(),

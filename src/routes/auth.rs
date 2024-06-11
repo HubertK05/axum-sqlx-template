@@ -1,4 +1,4 @@
-use crate::errors::{DbErrMap, AppError};
+use crate::errors::{AppError, DbErrMap};
 use crate::mailer::templates::AccountVerificationMail;
 use crate::mailer::Mailer;
 use crate::state::RdPool;
@@ -20,8 +20,8 @@ use redis::{AsyncCommands, Expiry, FromRedisValue, RedisError, RedisResult, ToRe
 use serde::Deserialize;
 use sqlx::types::Uuid;
 use sqlx::PgPool;
-use time::Duration;
 use std::str::FromStr;
+use time::Duration;
 
 pub mod jwt;
 mod oauth;
@@ -58,7 +58,12 @@ async fn register(
 ) -> crate::Result<impl IntoResponse> {
     // TODO: check for session
 
-    let target_address = Address::from_str(body.email.as_ref()).map_err(|e| AppError::exp(StatusCode::UNPROCESSABLE_ENTITY, format!("Invalid email: {e}")))?;
+    let target_address = Address::from_str(body.email.as_ref()).map_err(|e| {
+        AppError::exp(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("Invalid email: {e}"),
+        )
+    })?;
 
     let entropy = zxcvbn::zxcvbn(&body.password, &[&body.login]);
     if let Some(feedback) = entropy.feedback() {
@@ -71,7 +76,10 @@ async fn register(
             .map(|s| s.to_string())
             .collect::<Vec<String>>()
             .join(", ");
-        return Err(AppError::exp(StatusCode::UNPROCESSABLE_ENTITY, format!("Password is too weak: {warning}{suggestions}")))
+        return Err(AppError::exp(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("Password is too weak: {warning}{suggestions}"),
+        ));
     }
 
     let password_hash = hash(body.password);
@@ -87,11 +95,25 @@ async fn register(
         &body.email,
     )
     .fetch_one(&db)
-    .await.map_db_err(|e| e.unique(StatusCode::CONFLICT, "Cannot create user with provided data"))?
+    .await
+    .map_db_err(|e| {
+        e.unique(
+            StatusCode::CONFLICT,
+            "Cannot create user with provided data",
+        )
+    })?
     .id;
 
     let token_id = Uuid::new_v4();
-    mailer.send_verification_mail(token_id, &body.login, target_address, Some(VERIFICATION_EXPIRY)).await.context("Failed to send verification mail")?;
+    mailer
+        .send_verification_mail(
+            token_id,
+            &body.login,
+            target_address,
+            Some(VERIFICATION_EXPIRY),
+        )
+        .await
+        .context("Failed to send verification mail")?;
     VerificationEntry::set(&mut rds, token_id, user_id).await?;
 
     let session_id = ClientSession::set(&mut rds, &user_id).await?;
@@ -120,10 +142,7 @@ async fn login(
     )
     .fetch_optional(&db)
     .await?
-    .ok_or(AppError::exp(
-        StatusCode::FORBIDDEN,
-        "Invalid credentials",
-    ))
+    .ok_or(AppError::exp(StatusCode::FORBIDDEN, "Invalid credentials"))
     .map(|r| (r.id, r.password))?;
 
     if let Some(password_hash) = password_hash {
@@ -150,7 +169,7 @@ async fn verify_address(
     Query(token): Query<VerificationToken>,
 ) -> crate::Result<impl IntoResponse> {
     let Some(user_id) = VerificationEntry::get(&mut rds, token.token).await? else {
-        return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid token"))
+        return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid token"));
     };
 
     verify_account(&db, user_id).await?;
@@ -170,9 +189,17 @@ async fn request_password_change(
     Json(body): Json<PasswordChangeRequestInput>,
 ) -> crate::Result<impl IntoResponse> {
     let token = Uuid::new_v4();
-    let to = Address::from_str(&body.email).map_err(|e| AppError::exp(StatusCode::UNPROCESSABLE_ENTITY, format!("Invalid email address: {e}")))?;
-    
-    mailer.send_password_change_request_mail(token, to.clone(), Some(PASSWORD_CHANGE_EXPIRY)).await.context("Failed to send mail")?;
+    let to = Address::from_str(&body.email).map_err(|e| {
+        AppError::exp(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("Invalid email address: {e}"),
+        )
+    })?;
+
+    mailer
+        .send_password_change_request_mail(token, to.clone(), Some(PASSWORD_CHANGE_EXPIRY))
+        .await
+        .context("Failed to send mail")?;
     VerificationEntry::set(&mut rds, token, to.to_string()).await?;
 
     Ok(())
@@ -194,10 +221,11 @@ async fn change_password(
     Query(q): Query<PasswordChangeTokenQuery>,
     Json(body): Json<PasswordChangeInput>,
 ) -> crate::Result<impl IntoResponse> {
-    let Some(target_address): Option<String> = VerificationEntry::get(&mut rds, q.token).await? else {
-        return Err(AppError::exp(StatusCode::FORBIDDEN, "Access denied"))
+    let Some(target_address): Option<String> = VerificationEntry::get(&mut rds, q.token).await?
+    else {
+        return Err(AppError::exp(StatusCode::FORBIDDEN, "Access denied"));
     };
-    
+
     VerificationEntry::delete(&mut rds, q.token).await?;
     let hashed_password = hash(body.password);
 
@@ -207,7 +235,6 @@ async fn change_password(
 }
 
 async fn logout(claims: Claims, State(mut rds): State<RdPool>) -> crate::Result<impl IntoResponse> {
-
     ClientSession::invalidate(&mut rds, &claims.session_id).await?;
     Ok(Html("Successfully logged out"))
 }
@@ -273,9 +300,8 @@ where
             ));
         };
 
-        let session_id = Uuid::from_str(cookie.value()).map_err(|_| {
-            AppError::exp(StatusCode::FORBIDDEN, "Session id must be a valid UUID")
-        })?;
+        let session_id = Uuid::from_str(cookie.value())
+            .map_err(|_| AppError::exp(StatusCode::FORBIDDEN, "Session id must be a valid UUID"))?;
 
         let mut rds = RdPool::from_ref(state);
         let Some(user_id): Option<Uuid> = ClientSession::get(&mut rds, &session_id).await? else {
@@ -296,8 +322,18 @@ fn verification_entry_key(token: Uuid) -> String {
 }
 
 impl VerificationEntry {
-    async fn set<T: ToRedisArgs + Send + Sync>(rds: &mut impl AsyncRedisConn, token: Uuid, value: T) -> Result<(), AppError> {
-        Ok(rds.set_ex(verification_entry_key(token), value, VERIFICATION_EXPIRY.whole_seconds() as u64).await?)
+    async fn set<T: ToRedisArgs + Send + Sync>(
+        rds: &mut impl AsyncRedisConn,
+        token: Uuid,
+        value: T,
+    ) -> Result<(), AppError> {
+        Ok(rds
+            .set_ex(
+                verification_entry_key(token),
+                value,
+                VERIFICATION_EXPIRY.whole_seconds() as u64,
+            )
+            .await?)
     }
 
     /// Retrieves user_id from token
@@ -341,7 +377,11 @@ async fn verify_account(db: &PgPool, user_id: Uuid) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn update_password_by_email(db: &PgPool, email: String, new_password_hash: String) -> Result<(), AppError> {
+async fn update_password_by_email(
+    db: &PgPool,
+    email: String,
+    new_password_hash: String,
+) -> Result<(), AppError> {
     query!(
         r#"
             UPDATE users
@@ -350,7 +390,9 @@ async fn update_password_by_email(db: &PgPool, email: String, new_password_hash:
         "#,
         new_password_hash,
         email,
-    ).execute(db).await?;
+    )
+    .execute(db)
+    .await?;
 
     Ok(())
 }

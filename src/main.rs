@@ -30,9 +30,7 @@ pub type AppRouter = Router<AppState>;
 
 pub trait AsyncRedisConn: ConnectionLike + Send + AsyncCommands {}
 
-impl<T> AsyncRedisConn for T
-where
-    T: ConnectionLike + Send + AsyncCommands {}
+impl<T> AsyncRedisConn for T where T: ConnectionLike + Send + AsyncCommands {}
 
 #[tokio::main]
 async fn main() {

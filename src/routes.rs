@@ -1,6 +1,5 @@
 mod auth;
 
-use std::time::Duration;
 use crate::{errors::AppError, state::AppState};
 use axum::{
     body::Body,
@@ -11,6 +10,7 @@ use axum::{
     routing::get,
     Router,
 };
+use std::time::Duration;
 
 use axum::http::StatusCode;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};

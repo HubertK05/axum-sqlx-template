@@ -1,5 +1,6 @@
 use crate::config::Configuration;
 use crate::errors::AppError;
+use crate::mailer::Mailer;
 use crate::oauth::OAuthClients;
 use anyhow::anyhow;
 use axum::extract::FromRef;
@@ -13,7 +14,6 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::time::Duration;
 use tracing::log::LevelFilter;
-use crate::mailer::Mailer;
 // use crate::extensions::oauth2::OAuth;
 // use crate::extensions::verification::Verification;
 pub type RdPool = redis::aio::ConnectionManager;

@@ -32,17 +32,17 @@ impl Mailer {
         Self {
             transport: AsyncSmtpTransport::<Tokio1Executor>::relay(&*options.relay)
                 .unwrap()
-                .credentials(Credentials::new(options.email.clone(), options.password.clone()))
+                .credentials(Credentials::new(
+                    options.email.clone(),
+                    options.password.clone(),
+                ))
                 .build(),
             address: options.email.parse().expect("Failed to parse email"),
             frontend_domain,
         }
     }
 
-    async fn send_mail(
-        &self,
-        mail: impl Into<Mail>,
-    ) -> Result<Response, Error> {
+    async fn send_mail(&self, mail: impl Into<Mail>) -> Result<Response, Error> {
         let mail = mail.into();
 
         let res = self
@@ -63,18 +63,31 @@ impl Mailer {
         Ok(res)
     }
 
-    pub async fn send_verification_mail(&self, token: Uuid, username: impl Into<String>, to: Address, expiry: Option<Duration>) -> Result<Response, Error> {
+    pub async fn send_verification_mail(
+        &self,
+        token: Uuid,
+        username: impl Into<String>,
+        to: Address,
+        expiry: Option<Duration>,
+    ) -> Result<Response, Error> {
         let callback_url = format!("{}{VERIFICATION_PATH}?token={token}", self.frontend_domain);
-        let mail = AccountVerificationMail::new(username, to,  expiry, callback_url);
-        
+        let mail = AccountVerificationMail::new(username, to, expiry, callback_url);
+
         self.send_mail(mail).await
     }
 
-    pub async fn send_password_change_request_mail(&self, token: Uuid, to: Address, expiry: Option<Duration>) -> Result<Response, Error> {
-        let callback_url = format!("{}{PASSWORD_CHANGE_PATH}?token={token}", self.frontend_domain);
-        let mail = PasswordChangeRequestMail::new(to,  expiry, callback_url);
-        
+    pub async fn send_password_change_request_mail(
+        &self,
+        token: Uuid,
+        to: Address,
+        expiry: Option<Duration>,
+    ) -> Result<Response, Error> {
+        let callback_url = format!(
+            "{}{PASSWORD_CHANGE_PATH}?token={token}",
+            self.frontend_domain
+        );
+        let mail = PasswordChangeRequestMail::new(to, expiry, callback_url);
+
         self.send_mail(mail).await
     }
-
 }

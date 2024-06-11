@@ -26,9 +26,10 @@ struct Claims {
 
 impl Claims {
     fn family_root(user_id: Uuid) -> Self {
-        let valid_until = jsonwebtoken::get_current_timestamp() + JWT_ACCESS_TOKEN_EXPIRY.whole_seconds() as u64;
+        let valid_until =
+            jsonwebtoken::get_current_timestamp() + JWT_ACCESS_TOKEN_EXPIRY.whole_seconds() as u64;
         let token_id = Uuid::new_v4();
-        
+
         Self {
             jti: token_id,
             sub: user_id,
@@ -38,7 +39,8 @@ impl Claims {
     }
 
     fn new_member(self) -> Self {
-        let valid_until = jsonwebtoken::get_current_timestamp() + JWT_ACCESS_TOKEN_EXPIRY.whole_seconds() as u64;
+        let valid_until =
+            jsonwebtoken::get_current_timestamp() + JWT_ACCESS_TOKEN_EXPIRY.whole_seconds() as u64;
 
         Self {
             jti: Uuid::new_v4(),
@@ -72,10 +74,12 @@ async fn register_tokens(
     jwt_secrets: JwtConfiguration,
     refresh_claims: Claims,
 ) -> Result<(String, String), AppError> {
-    let refresh_token = encode_jwt(refresh_claims, jwt_secrets.refresh_secret).context("Failed to encode JWT")?;
-    
+    let refresh_token =
+        encode_jwt(refresh_claims, jwt_secrets.refresh_secret).context("Failed to encode JWT")?;
+
     let access_claims = refresh_claims.new_member();
-    let access_token = encode_jwt(access_claims, jwt_secrets.access_secret).context("Failed to encode JWT")?;
+    let access_token =
+        encode_jwt(access_claims, jwt_secrets.access_secret).context("Failed to encode JWT")?;
 
     TokenFamily::set_valid(rds, refresh_claims).await?;
 
@@ -91,7 +95,10 @@ async fn refresh(
         continue_token_family(rds, jwt_secrets, refresh_claims.new_member()).await
     } else {
         TokenFamily::invalidate(rds, refresh_claims.family).await?;
-        Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid refresh token"))
+        Err(AppError::exp(
+            StatusCode::FORBIDDEN,
+            "Invalid refresh token",
+        ))
     }
 }
 
@@ -101,15 +108,20 @@ impl TokenFamily {
     async fn is_valid(rds: &mut impl AsyncRedisConn, claims: Claims) -> RedisResult<bool> {
         Ok(rds.exists(valid_token(claims.family)).await?)
     }
-    
-    async fn is_valid_refresh_token(rds: &mut impl AsyncRedisConn, claims: Claims) -> RedisResult<bool> {
+
+    async fn is_valid_refresh_token(
+        rds: &mut impl AsyncRedisConn,
+        claims: Claims,
+    ) -> RedisResult<bool> {
         let valid_token_id: Uuid = rds.get(valid_token(claims.family)).await?;
 
         Ok(valid_token_id == claims.jti)
     }
 
     async fn set_valid(rds: &mut impl AsyncRedisConn, claims: Claims) -> RedisResult<()> {
-        Ok(rds.set(valid_token(claims.family),claims.jti.to_string()).await?)
+        Ok(rds
+            .set(valid_token(claims.family), claims.jti.to_string())
+            .await?)
     }
 
     async fn invalidate(rds: &mut impl AsyncRedisConn, family_id: Uuid) -> RedisResult<()> {
@@ -132,7 +144,7 @@ fn decode_jwt<'a>(token: &str, secret: impl Into<String>) -> jsonwebtoken::error
     let res = decode(
         token,
         &DecodingKey::from_secret(secret.into().as_bytes()),
-        &validation
+        &validation,
     )?;
 
     Ok(res.claims)
@@ -200,9 +212,12 @@ mod tests {
     async fn create_family_sets_correct_valid_token_in_redis() {
         let refresh_claims = Claims::family_root(USER_ID);
 
-        let mut conn = MockRedisConnection::new(vec![
-            MockCmd::new(cmd("SET").arg(valid_token(refresh_claims.family)).arg(refresh_claims.jti.to_string()), Ok("OK")),
-        ]);
+        let mut conn = MockRedisConnection::new(vec![MockCmd::new(
+            cmd("SET")
+                .arg(valid_token(refresh_claims.family))
+                .arg(refresh_claims.jti.to_string()),
+            Ok("OK"),
+        )]);
 
         let res = register_tokens(&mut conn, jwt_secrets(), refresh_claims).await;
         dbg!(&res);
@@ -214,9 +229,12 @@ mod tests {
         let old_refresh_claims = Claims::family_root(USER_ID);
         let new_refresh_claims = old_refresh_claims.new_member();
 
-        let mut conn = MockRedisConnection::new(vec![
-            MockCmd::new(cmd("SET").arg(valid_token(old_refresh_claims.family)).arg(old_refresh_claims.jti.to_string()), Ok("OK")),
-        ]);
+        let mut conn = MockRedisConnection::new(vec![MockCmd::new(
+            cmd("SET")
+                .arg(valid_token(old_refresh_claims.family))
+                .arg(old_refresh_claims.jti.to_string()),
+            Ok("OK"),
+        )]);
 
         let res = register_tokens(&mut conn, jwt_secrets(), new_refresh_claims).await;
         dbg!(&res);
@@ -225,9 +243,10 @@ mod tests {
 
     #[tokio::test]
     async fn invlidate_family_removes_correct_valid_token_in_redis() {
-        let mut conn = MockRedisConnection::new(vec![
-            MockCmd::new(cmd("DEL").arg(valid_token(FAMILY_ID)), Ok("OK")),
-        ]);
+        let mut conn = MockRedisConnection::new(vec![MockCmd::new(
+            cmd("DEL").arg(valid_token(FAMILY_ID)),
+            Ok("OK"),
+        )]);
 
         let res = TokenFamily::invalidate(&mut conn, FAMILY_ID).await;
         dbg!(&res);

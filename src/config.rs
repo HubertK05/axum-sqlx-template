@@ -128,7 +128,7 @@ impl Configuration {
             .expect("Invalid URI format for PUBLIC_DOMAIN");
 
         let oauth: OAuthConfiguration = OAuthConfiguration::from_env();
-        
+
         let jwt: JwtConfiguration = JwtConfiguration::from_env();
 
         let smtp: SmtpConfiguration = SmtpConfiguration::from_env();
@@ -171,7 +171,7 @@ impl Configuration {
         let jwt: JwtConfiguration = config.get("jwt").unwrap();
 
         let smtp: SmtpConfiguration = config.get("smtp").unwrap();
-        
+
         Self {
             environment,
             address,
