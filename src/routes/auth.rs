@@ -136,7 +136,6 @@ async fn login(
 }
 
 async fn verify_address(
-    claims: Claims,
     State(db): State<PgPool>,
     State(mut rds): State<RdPool>,
     Query(token): Query<Uuid>,
@@ -144,10 +143,6 @@ async fn verify_address(
     let Some(user_id) = VerificationEntry::delete(&mut rds, token).await? else {
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid token"))
     };
-
-    if user_id != claims.user_id {
-        return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid token"))
-    }
 
     verify_account(&db, user_id).await?;
 
