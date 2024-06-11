@@ -1,28 +1,28 @@
 use crate::{
-    errors::AppError,
-    state::AppState,
+    docutils::{get, DocRouter}, errors::AppError, state::AppState
 };
 use axum::{
-    body::Body, extract::{ConnectInfo, State}, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, routing::get, Router
+    body::Body, extract::ConnectInfo, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, Router
 };
 use reqwest::StatusCode;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
+use utoipa::openapi::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 use std::{net::SocketAddr, time::Duration};
-// use utoipa::OpenApi;
-// use utoipa_swagger_ui::SwaggerUi;
 
-// const SWAGGER_URI: &str = "/swagger-ui";
+const SWAGGER_URI: &str = "/swagger-ui";
 
 pub fn app(app_state: AppState) -> Router {
-    let router: Router<AppState> = Router::new();
-
-    // if app_state.env().is_dev() {
-    //     router = add_swagger(router);
-    // };
-
-    router
+    let (mut documented_router, docs) = DocRouter::new("template", "0.1.0")
         .route("/", get(home_page))
+        .finish_doc();
+
+    if app_state.env().is_dev() {
+        documented_router = add_swagger(documented_router, docs);
+    };
+
+    documented_router
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<Body>| {
@@ -37,9 +37,9 @@ pub fn app(app_state: AppState) -> Router {
         .with_state(app_state)
 }
 
-async fn home_page() -> impl IntoResponse {
+async fn home_page() -> Result<(StatusCode, Html<&'static str>), AppError> {
     trace!("Welcome to the API home page!");
-    (StatusCode::OK, Html("<h1>API home page</h1>"))
+    Ok((StatusCode::OK, Html("<h1>API home page</h1>")))
 }
 
 async fn not_found(
@@ -51,7 +51,9 @@ async fn not_found(
     Err(AppError::exp(StatusCode::NOT_FOUND, &msg))
 }
 
-// fn add_swagger(router: Router<AppState>) -> Router<AppState> {
-//     info!("Enabling Swagger UI");
-//     router.merge(SwaggerUi::new(SWAGGER_URI).url("/api-doc/openapi.json", doc::ApiDoc::openapi()))
-// }
+fn add_swagger<S>(router: Router<S>, docs: OpenApi) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static {
+    info!("Enabling Swagger UI");
+    router.merge(SwaggerUi::new(SWAGGER_URI).url("/api-doc/openapi.json", docs))
+}

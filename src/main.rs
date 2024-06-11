@@ -2,6 +2,7 @@
 mod macros;
 
 pub mod config;
+pub mod docutils;
 pub mod errors;
 mod miscutils;
 pub mod routes;
