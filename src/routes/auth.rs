@@ -75,15 +75,16 @@ async fn register(
 
     let user_id = query!(
         r#"
-    INSERT INTO users (login, password, verified)
-    VALUES ($1, $2, false)
+    INSERT INTO users (login, password, email, verified)
+    VALUES ($1, $2, $3, false)
     RETURNING id
     "#,
         &body.login,
-        password_hash
+        password_hash,
+        &body.email,
     )
     .fetch_one(&db)
-    .await.map_db_err(|e| e.unique(StatusCode::CONFLICT, "Login is not available"))?
+    .await.map_db_err(|e| e.unique(StatusCode::CONFLICT, "Cannot create user with provided data"))?
     .id;
 
     let token_id = Uuid::new_v4();

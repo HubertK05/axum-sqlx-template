@@ -4,7 +4,8 @@ CREATE TABLE users(
     email TEXT,
     password TEXT,
     verified BOOLEAN NOT NULL,
-    UNIQUE (login)
+    UNIQUE (login),
+    UNIQUE (email)
 );
 
 CREATE TYPE credential_provider AS ENUM(
