@@ -29,7 +29,6 @@ pub struct AppState {
     mailer: Mailer,
     environment: Environment,
 }
-const FRONTEND_URL: &str = "http://localhost:3000";
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
@@ -69,7 +68,7 @@ impl AppState {
             .await
             .unwrap();
 
-        let mailer = Mailer::new(FRONTEND_URL.to_string(), &config.smtp);
+        let mailer = Mailer::new(config.domain_name.to_string(), &config.smtp);
         
         Self {
             db,

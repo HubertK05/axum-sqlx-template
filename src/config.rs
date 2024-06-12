@@ -218,9 +218,8 @@ impl AbsoluteUri {
 
     fn uri(&self) -> String {
         format!(
-            "{}://{}",
-            self.0.scheme_str().unwrap(),
-            self.0.authority().unwrap()
+            "http://{}",
+            self.0.host().unwrap()
         )
     }
 
@@ -248,7 +247,7 @@ impl TryFrom<Uri> for AbsoluteUri {
 
 impl Display for AbsoluteUri {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.domain())
+        write!(f, "{}", self.uri())
     }
 }
 
