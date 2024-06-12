@@ -1,3 +1,4 @@
+use crate::errors::AppError;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
@@ -6,11 +7,9 @@ use axum_extra::extract::cookie::{Cookie, SameSite};
 use lettre::Address;
 use serde::Deserialize;
 use time::Duration;
-use crate::errors::AppError;
 
 pub mod jwt;
 pub mod oauth;
-pub mod session;
 
 pub fn hash_password(password: String) -> String {
     let salt = SaltString::generate(&mut OsRng);
@@ -83,7 +82,7 @@ impl PasswordStrength for LoginForm {
     }
 }
 
-pub fn check_password_strength(password: &str, inputs: &[&str]) -> crate::Result<()>{
+pub fn check_password_strength(password: &str, inputs: &[&str]) -> crate::Result<()> {
     let entropy = zxcvbn::zxcvbn(password, inputs);
     if let Some(feedback) = entropy.feedback() {
         let warning = feedback

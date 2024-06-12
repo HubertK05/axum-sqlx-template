@@ -1,7 +1,5 @@
-use crate::auth::jwt::init_token_family;
+use crate::auth::jwt::{init_token_family, Session};
 use crate::auth::oauth::{AuthProvider, OAuthClient, OAuthClients, OAuthUser};
-use crate::auth::session::Session;
-use crate::config::AbsoluteUri;
 use crate::errors::AppError;
 use crate::AppRouter;
 use axum::extract::{Query, State};
@@ -56,7 +54,6 @@ impl CsrfState {
 async fn handle_github_callback(
     jar: CookieJar,
     State(jwt_keys): State<JwtKeys>,
-    State(domain_name): State<AbsoluteUri>,
     State(mut rds): State<RdPool>,
     State(db): State<PgPool>,
     State(oauth): State<OAuthClients>,
@@ -75,34 +72,22 @@ async fn handle_github_callback(
     if let Some(user_id) =
         select_user_id_from_federated_credentials(&db, &auth_provider, &subject_id).await?
     {
-        let tokens = init_token_family(&mut rds, &jwt_keys, user_id).await?;
+        let jar = Session::set(&mut rds, jar, &jwt_keys, user_id).await?;
         trace!("{user_id} logged in with {auth_provider}");
         Ok((
-            tokens.add_cookies(jar),
+            jar,
             Html(format!("<h1>Authenticated with {auth_provider}</h1>")),
         ))
-        // session cookie based auth part
-        // let session_cookie = Session::set(&mut rds, &user_id).await?;
-        // Ok((
-        //     jar.add(session_cookie),
-        //     Html(format!("<h1>Authenticated with {auth_provider}</h1>")),
-        // ))
     } else {
         let user_id =
             create_user_with_federated_credential(&db, &auth_provider, &subject_id).await?;
-        let tokens = init_token_family(&mut rds, &jwt_keys, user_id).await?;
+        let jar = Session::set(&mut rds, jar, &jwt_keys, user_id).await?;
         trace!("{user_id} registered with {auth_provider}");
 
         Ok((
-            tokens.add_cookies(jar),
+            jar,
             Html(format!("<h1>Authenticated with {auth_provider}</h1>")),
         ))
-        // session cookie based auth part
-        // let session_cookie = Session::set(&mut rds, &user_id).await?;
-        // Ok((
-        //     jar.add(session_cookie),
-        //     Html(format!("<h1>Authenticated with {auth_provider}</h1>")),
-        // ))
     }
 }
 

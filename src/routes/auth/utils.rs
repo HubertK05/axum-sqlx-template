@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 pub fn router() -> AppRouter {
     Router::new()
-        .route("/verify", get(verify_address))
+        .route("/verify", get(verify_address)) // is currently GET, because there is no frontend and the request goes directly to the backend
         .route("/password", post(request_password_change))
         .route("/password/callback", post(change_password))
 }
@@ -39,7 +39,13 @@ async fn request_password_change(
         .send_password_change_request_mail(token, body.email.clone(), Some(PASSWORD_CHANGE_EXPIRY))
         .await
         .context("Failed to send mail")?;
-    VerificationEntry::set(&mut rds, token, body.email.to_string(), PASSWORD_CHANGE_EXPIRY).await?;
+    VerificationEntry::set(
+        &mut rds,
+        token,
+        body.email.to_string(),
+        PASSWORD_CHANGE_EXPIRY,
+    )
+    .await?;
 
     Ok(())
 }
@@ -79,7 +85,7 @@ async fn change_password(
 
     let mut inputs = vec![target_address.as_ref()];
     inputs.extend(login.as_deref());
-    
+
     check_password_strength(&body.password, inputs.as_slice())?;
 
     // TODO consider converting to Address

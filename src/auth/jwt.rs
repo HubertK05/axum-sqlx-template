@@ -1,7 +1,7 @@
 use crate::auth::safe_cookie;
 use crate::config::{AbsoluteUri, JwtConfiguration};
 use crate::errors::AppError;
-use crate::state::JwtKeys;
+use crate::state::{JwtKeys, RdPool};
 use crate::AsyncRedisConn;
 use anyhow::Context;
 use axum::extract::{FromRef, FromRequestParts};
@@ -90,6 +90,52 @@ impl Claims {
     }
 }
 
+#[derive(Clone)]
+pub struct Session;
+
+impl Session {
+    pub async fn set(
+        rds: &mut impl AsyncRedisConn,
+        jar: CookieJar,
+        jwt_keys: &JwtKeys,
+        user_id: Uuid,
+    ) -> Result<CookieJar, AppError> {
+        let refresh_claims = Claims::family_root(user_id);
+        let token_pair = register_tokens(rds, jwt_keys, refresh_claims).await?;
+        Ok(token_pair.add_cookies(jar))
+    }
+
+    pub async fn invalidate(rds: &mut RdPool, family_id: Uuid) -> RedisResult<()> {
+        // TODO remove cookie?
+        TokenFamily::invalidate(rds, family_id).await
+    }
+
+    pub async fn refresh(
+        rds: &mut impl AsyncRedisConn,
+        jar: CookieJar,
+        jwt_keys: &JwtKeys,
+    ) -> Result<CookieJar, AppError> {
+        let Some(cookie) = jar.get(JWT_REFRESH_COOKIE_NAME) else {
+            return Err(AppError::exp(StatusCode::FORBIDDEN, "Session expired"));
+        };
+
+        let claims = decode_jwt(cookie.value(), jwt_keys.decoding_refresh())
+            .inspect_err(|e| debug!("Refresh token: {e}"))
+            .map_err(|_| AppError::exp(StatusCode::FORBIDDEN, "Session expired"))?;
+
+        if TokenFamily::is_valid_refresh_token(rds, claims).await? {
+            let token_pair = continue_token_family(rds, jwt_keys, claims.new_member()).await?;
+            return Ok(token_pair.add_cookies(jar));
+        } else {
+            TokenFamily::invalidate(rds, claims.family).await?;
+            Err(AppError::exp(
+                StatusCode::FORBIDDEN,
+                "Invalid refresh token",
+            ))
+        }
+    }
+}
+
 pub async fn init_token_family(
     rds: &mut impl AsyncRedisConn,
     jwt_secrets: &JwtKeys,
@@ -113,12 +159,12 @@ async fn register_tokens(
     jwt_keys: &JwtKeys,
     refresh_claims: Claims,
 ) -> Result<TokenPair, AppError> {
-    let refresh_token =
-        encode_jwt(refresh_claims, jwt_keys.encoding_refresh()).context("Failed to encode refresh JWT")?;
+    let refresh_token = encode_jwt(refresh_claims, jwt_keys.encoding_refresh())
+        .context("Failed to encode refresh JWT")?;
 
     let access_claims = refresh_claims.new_member();
-    let access_token =
-        encode_jwt(access_claims, jwt_keys.encoding_access()).context("Failed to encode access JWT")?;
+    let access_token = encode_jwt(access_claims, jwt_keys.encoding_access())
+        .context("Failed to encode access JWT")?;
 
     TokenFamily::set_valid(rds, refresh_claims).await?;
 
@@ -143,7 +189,7 @@ pub async fn refresh_jwt_session<'c>(
 
     if TokenFamily::is_valid_refresh_token(rds, claims).await? {
         let token_pair = continue_token_family(rds, &jwt_keys, claims.new_member()).await?;
-        return Ok(token_pair.add_cookies(jar))
+        return Ok(token_pair.add_cookies(jar));
     } else {
         TokenFamily::invalidate(rds, claims.family).await?;
         Err(AppError::exp(
@@ -233,6 +279,7 @@ where
                 ))
             }
         };
+
     }
 }
 

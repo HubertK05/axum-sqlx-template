@@ -9,13 +9,13 @@ use redis::{aio::ConnectionLike, AsyncCommands, RedisResult};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::auth::jwt::{init_token_family, invalidate, refresh_jwt_session, Claims};
-use crate::auth::{PasswordStrength, hash_password, is_correct_password, LoginForm, RegistrationForm};
+use crate::auth::jwt::{init_token_family, invalidate, refresh_jwt_session, Claims, Session};
+use crate::auth::{hash_password, is_correct_password, LoginForm, PasswordStrength, RegistrationForm};
 use crate::errors::DbErrMap;
 use crate::mailer::Mailer;
 use crate::routes::auth::{VerificationEntry, VERIFICATION_EXPIRY};
 use crate::state::{AppState, JwtKeys};
-use crate::{config::JwtConfiguration, errors::AppError, state::RdPool, AppRouter, AsyncRedisConn};
+use crate::{errors::AppError, state::RdPool, AppRouter, AsyncRedisConn};
 
 pub fn router() -> AppRouter {
     Router::new()
@@ -32,7 +32,7 @@ async fn register(
     State(jwt_keys): State<JwtKeys>,
     State(mailer): State<Mailer>,
     State(db): State<PgPool>,
-    Json(body): Json<RegistrationForm>, 
+    Json(body): Json<RegistrationForm>,
 ) -> crate::Result<impl IntoResponse> {
     // TODO: check for session
     body.check_password_strength()?;
@@ -60,16 +60,13 @@ async fn register(
     .id;
 
     let token_id = Uuid::new_v4();
-    // TODO: reconsider changing order of sending email and creating a token entry in Redis
+    VerificationEntry::set(&mut rds, token_id, user_id, VERIFICATION_EXPIRY).await?;
     mailer
         .send_verification_mail(token_id, &body.login, body.email, Some(VERIFICATION_EXPIRY))
         .await
         .context("Failed to send verification mail")?;
-    VerificationEntry::set(&mut rds, token_id, user_id, VERIFICATION_EXPIRY).await?;
 
-    let tokens = init_token_family(&mut rds, &jwt_keys, user_id).await?;
-
-    Ok(tokens.add_cookies(jar))
+    Session::set(&mut rds, jar, &jwt_keys, user_id).await
 }
 
 async fn login(
@@ -94,8 +91,7 @@ async fn login(
 
     if let Some(password_hash) = password_hash {
         if is_correct_password(body.password, password_hash) {
-            let tokens = init_token_family(&mut rds, &jwt_keys, user_id).await?;
-            return Ok(tokens.add_cookies(jar));
+            return Session::set(&mut rds, jar, &jwt_keys, user_id).await
         }
         // here it is possible to return exact error but this information is helpful for both users and hackers
     }
@@ -111,7 +107,7 @@ async fn refresh_session(
     State(mut rds): State<RdPool>,
     jar: CookieJar,
 ) -> crate::Result<impl IntoResponse> {
-    refresh_jwt_session(&mut rds, jar, jwt_keys).await
+    Session::refresh(&mut rds, jar, &jwt_keys).await
 }
 
 async fn logout(claims: Claims, State(mut rds): State<RdPool>) -> crate::Result<impl IntoResponse> {
