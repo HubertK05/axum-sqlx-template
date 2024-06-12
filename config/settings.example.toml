@@ -1,3 +1,16 @@
 database_url = "postgres://localhost/axum_template"
+redis_url = "redis://127.0.0.1:6379/0"
 address = "127.0.0.1:3000" # optional
-public_domain = "https://my-app.up.railway.app" # optional
+domain_name = "https://my-app.up.railway.app" # optional
+[oauth]
+is_enabled = true
+[oauth.github] # https://github.com/settings/applications
+id = ""
+secret = ""
+[jwt]
+access_secret = ""
+refresh_secret = ""
+[smtp]
+relay = "smtp.gmail.com"
+email = "" # your own email
+password = "" # https://myaccount.google.com/apppasswords

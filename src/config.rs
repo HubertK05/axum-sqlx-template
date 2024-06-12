@@ -1,8 +1,9 @@
-use crate::errors::AppError::Unexpected;
+use crate::auth::oauth::AuthProvider;
 use anyhow::{bail, Context};
 use axum::http::uri::{PathAndQuery, Scheme};
 use axum::http::Uri;
 use config::{Config, ConfigError, File, FileFormat};
+use oauth2::{ClientId, ClientSecret};
 use serde::de::{Error, IntoDeserializer, Visitor};
 use serde::{Deserialize, Deserializer};
 use std::fmt::{Display, Formatter};
@@ -16,8 +17,9 @@ use std::{
 use crate::state::Environment;
 const ADDRESS: &str = "ADDRESS";
 const DATABASE_URL: &str = "DATABASE_URL";
-const PUBLIC_DOMAIN: &str = "PUBLIC_DOMAIN";
-const REQUIRED: &[&str] = &[ADDRESS, DATABASE_URL, PUBLIC_DOMAIN];
+const REDIS_URL: &str = "REDIS_URL";
+const DOMAIN_NAME: &str = "DOMAIN_NAME";
+const REQUIRED: &[&str] = &[ADDRESS, DATABASE_URL, DOMAIN_NAME, REDIS_URL];
 const LOCAL_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 3000);
 
 #[derive(Debug)]
@@ -26,6 +28,72 @@ pub struct Configuration {
     pub address: SocketAddr,
     pub database_url: String,
     pub domain_name: AbsoluteUri,
+    pub redis_url: String,
+    pub oauth: OAuthConfiguration,
+    pub jwt: JwtConfiguration,
+    pub smtp: SmtpConfiguration,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OAuthAccess {
+    pub id: ClientId,
+    pub secret: ClientSecret,
+}
+
+impl OAuthAccess {
+    fn from_env(provider: AuthProvider) -> Self {
+        let provider = provider.to_string().to_uppercase();
+        let id = ClientId::new(var(format!("{provider}_CLIENT_ID")).unwrap());
+        let secret = ClientSecret::new(var(format!("{provider}_CLIENT_SECRET")).unwrap());
+        Self { id, secret }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OAuthConfiguration {
+    pub is_enabled: bool,
+    pub github: OAuthAccess,
+}
+
+impl OAuthConfiguration {
+    fn from_env() -> Self {
+        Self {
+            is_enabled: true,
+            github: OAuthAccess::from_env(AuthProvider::Github),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct JwtConfiguration {
+    pub access_secret: String,
+    pub refresh_secret: String,
+}
+
+impl JwtConfiguration {
+    fn from_env() -> Self {
+        Self {
+            access_secret: var("JWT_ACCESS_SECRET").unwrap(),
+            refresh_secret: var("JWT_REFRESH_SECRET").unwrap(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SmtpConfiguration {
+    pub relay: String,
+    pub email: String,
+    pub password: String,
+}
+
+impl SmtpConfiguration {
+    fn from_env() -> Self {
+        Self {
+            relay: var("SMTP_RELAY").unwrap(),
+            email: var("SMTP_EMAIL").unwrap(),
+            password: var("SMTP_PASSWORD").unwrap(),
+        }
+    }
 }
 
 impl Configuration {
@@ -49,18 +117,31 @@ impl Configuration {
             .unwrap()
             .parse()
             .expect("Invalid socket address");
+
         let database_url: String = var(DATABASE_URL).unwrap();
 
-        let public_domain: AbsoluteUri = var(PUBLIC_DOMAIN)
+        let redis_url: String = var(REDIS_URL).unwrap();
+
+        let domain_name: AbsoluteUri = var(DOMAIN_NAME)
             .unwrap()
             .parse()
-            .expect("Invalid URI format for PUBLIC_DOMAIN");
+            .expect("Invalid URI format for DOMAIN_NAME");
+
+        let oauth: OAuthConfiguration = OAuthConfiguration::from_env();
+
+        let jwt: JwtConfiguration = JwtConfiguration::from_env();
+
+        let smtp: SmtpConfiguration = SmtpConfiguration::from_env();
 
         Self {
             environment,
             address,
             database_url,
-            domain_name: public_domain,
+            redis_url,
+            domain_name,
+            oauth,
+            jwt,
+            smtp,
         }
     }
 
@@ -75,7 +156,9 @@ impl Configuration {
 
         let database_url: String = config.get(DATABASE_URL).unwrap();
 
-        let public_domain: AbsoluteUri = config.get(PUBLIC_DOMAIN).unwrap_or_else(|e| {
+        let redis_url: String = config.get(REDIS_URL).unwrap();
+
+        let domain_name: AbsoluteUri = config.get(DOMAIN_NAME).unwrap_or_else(|e| {
             if matches!(e, ConfigError::NotFound(_)) {
                 AbsoluteUri::from_addr(&address)
             } else {
@@ -83,11 +166,21 @@ impl Configuration {
             }
         });
 
+        let oauth: OAuthConfiguration = config.get("oauth").unwrap();
+
+        let jwt: JwtConfiguration = config.get("jwt").unwrap();
+
+        let smtp: SmtpConfiguration = config.get("smtp").unwrap();
+
         Self {
             environment,
             address,
             database_url,
-            domain_name: public_domain,
+            redis_url,
+            domain_name,
+            oauth,
+            jwt,
+            smtp,
         }
     }
 }
@@ -108,12 +201,27 @@ pub fn load_config() -> Result<Configuration, anyhow::Error> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AbsoluteUri(Uri);
 
 impl AbsoluteUri {
     fn from_addr(addr: &SocketAddr) -> Self {
-        Self(Uri::builder().scheme(Scheme::HTTP).authority(addr.to_string()).path_and_query("/").build().unwrap())
+        Self(
+            Uri::builder()
+                .scheme(Scheme::HTTP)
+                .authority(addr.to_string())
+                .path_and_query("/")
+                .build()
+                .unwrap(),
+        )
+    }
+
+    fn uri(&self) -> String {
+        format!(
+            "{}://{}",
+            self.0.scheme_str().unwrap(),
+            self.0.authority().unwrap()
+        )
     }
 
     fn domain(&self) -> String {
@@ -140,7 +248,7 @@ impl TryFrom<Uri> for AbsoluteUri {
 
 impl Display for AbsoluteUri {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.authority().unwrap())
+        write!(f, "{}", self.domain())
     }
 }
 
@@ -159,7 +267,7 @@ impl<'de> Visitor<'de> for AbsoluteUriVisitor {
     type Value = AbsoluteUri;
 
     fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-        write!(formatter, "absolute URI to the public domain")
+        write!(formatter, "absolute URI to the domain name")
     }
 
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>

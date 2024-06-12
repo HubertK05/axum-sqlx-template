@@ -1,10 +1,14 @@
-use crate::{
-    docutils::{get, DocRouter}, errors::AppError, state::AppState
+mod auth;
+
+use crate::{docutils::{get, DocRouter}, errors::AppError, state::AppState
 };
 use axum::{
-    body::Body, extract::ConnectInfo, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect}, Router
+    body::Body,
+    debug_handler,
+    extract::ConnectInfo, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect},
+    Router,
 };
-use reqwest::StatusCode;
+use axum::http::StatusCode;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
 use utoipa::openapi::OpenApi;
@@ -23,6 +27,7 @@ pub fn app(app_state: AppState) -> Router {
     };
 
     documented_router
+        .nest("/auth", auth::router())
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<Body>| {
@@ -44,7 +49,7 @@ async fn home_page() -> Result<(StatusCode, Html<&'static str>), AppError> {
 
 async fn not_found(
     uri: Uri,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
 ) -> Result<Redirect, AppError> {
     let msg = format!("Endpoint not found: {uri}");
     debug!("IP: {}", addr.ip());
