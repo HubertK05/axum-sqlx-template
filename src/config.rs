@@ -219,7 +219,7 @@ impl AbsoluteUri {
     fn uri(&self) -> String {
         format!(
             "http://{}",
-            self.0.host().unwrap()
+            self.0.authority().unwrap()
         )
     }
 
