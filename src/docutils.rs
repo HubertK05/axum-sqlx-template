@@ -179,16 +179,12 @@ pub enum RequestPart {
 }
 
 struct AppDocs {
-    app_name: String,
-    version: String,
     paths: HashMap<String, PathDocs>,
 }
 
 impl AppDocs {
-    fn new(app_name: &str, version: &str) -> Self {
+    fn new() -> Self {
         Self {
-            app_name: app_name.into(),
-            version: version.into(),
             paths: HashMap::new(),
         }
     }
@@ -196,13 +192,11 @@ impl AppDocs {
     fn insert_path(&mut self, path: impl Into<String>, path_docs: PathDocs) -> Option<PathDocs> {
         self.paths.insert(path.into(), path_docs)
     }
-}
 
-impl From<AppDocs> for OpenApi {
-    fn from(val: AppDocs) -> Self {
-        let mut res = OpenApi::new(Info::new(val.app_name, val.version), Paths::new());
+    fn to_openapi(self, app_name: String, version: String) -> OpenApi {
+        let mut res = OpenApi::new(Info::new(app_name, version), Paths::new());
 
-        for (uri, path_spec) in val.paths {
+        for (uri, path_spec) in self.paths {
             let Some((path_openapi, collected_schemas)) = path_spec.collect() else {
                 continue;
             };
@@ -348,9 +342,9 @@ pub struct DocRouter<S> {
 impl<S> DocRouter<S>
 where
     S: Clone + Send + Sync + 'static {
-    pub fn new(app_name: &str, version: &str) -> Self {
+    pub fn new() -> Self {
         Self {
-            docs: AppDocs::new(app_name, version),
+            docs: AppDocs::new(),
             router: Router::new(),
         }
     }
@@ -395,10 +389,10 @@ where
         }
     }
 
-    pub fn finish_doc(self) -> (Router<S>, OpenApi) {
+    pub fn finish_doc(self, app_name: impl Into<String>, version: impl Into<String>) -> (Router<S>, OpenApi) {
         let Self { router, docs } = self;
 
-        (router, OpenApi::from(docs))
+        (router, docs.to_openapi(app_name.into(), version.into()))
     }
 }
 
