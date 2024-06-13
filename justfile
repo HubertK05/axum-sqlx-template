@@ -2,9 +2,9 @@ alias r := run
 alias w := watch
 
 copy_config := if os_family() == "windows" { 
-		'copy .\config\settings.example.toml .\config\settings.toml' 
+		'copy /-y .\config\settings.example.toml .\config\settings.toml & copy /-y .\.env.example .\.env'
 	} else { 
-		'cp ./config/settings.example.toml ./config/settings.toml' 
+		'cp -i ./config/settings.example.toml ./config/settings.toml ; cp -i ./.env.example ./.env'
 	}
 
 _default:
