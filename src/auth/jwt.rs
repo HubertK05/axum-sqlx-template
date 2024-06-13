@@ -1,7 +1,8 @@
 use crate::auth::safe_cookie;
 use crate::config::{AbsoluteUri, JwtConfiguration};
+use crate::docutils::DocExtractor;
 use crate::errors::AppError;
-use crate::state::{JwtKeys, RdPool};
+use crate::state::{AppState, JwtKeys, RdPool};
 use crate::AsyncRedisConn;
 use anyhow::Context;
 use axum::extract::{FromRef, FromRequestParts};
@@ -251,6 +252,7 @@ impl<S> FromRequestParts<S> for Claims
 where
     S: Send + Sync,
     JwtKeys: FromRef<S>,
+    RdPool: FromRef<S>,
 {
     type Rejection = AppError;
 
@@ -263,25 +265,28 @@ where
                 "Authentication required",
             ));
         };
-
-        return match decode_jwt(cookie.value(), jwt_keys.decoding_access()) {
-            Ok(claims) => Ok(claims),
-            Err(e) => {
-                match e.kind() {
-                    ErrorKind::InvalidToken => {}     // not a valid JWT
-                    ErrorKind::InvalidSignature => {} // JWT content changed
-                    ErrorKind::ExpiredSignature => {} // JWT expired
-                    _ => error!("{e}"),
-                }
-                Err(AppError::exp(
-                    StatusCode::FORBIDDEN,
-                    "Authentication required",
-                ))
+        
+        let claims = decode_jwt(cookie.value(), jwt_keys.decoding_access()).inspect_err(|e| {
+            match e.kind() {
+                ErrorKind::InvalidToken => {}     // not a valid JWT
+                ErrorKind::InvalidSignature => {} // JWT content changed
+                ErrorKind::ExpiredSignature => {} // JWT expired
+                _ => error!("{e}"),
             }
-        };
+        });
 
+        let mut rds: RdPool = RdPool::from_ref(state);
+        match claims {
+            Ok(claims) if TokenFamily::is_valid(&mut rds, claims).await? => Ok(claims),
+            _ => Err(AppError::exp(
+                StatusCode::FORBIDDEN,
+                "Authentication required",
+            ))
+        }
     }
 }
+
+impl DocExtractor for Claims {}
 
 #[cfg(test)]
 mod tests {
