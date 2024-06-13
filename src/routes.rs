@@ -4,8 +4,7 @@ use crate::{docutils::{get, DocRouter}, errors::AppError, state::AppState
 };
 use axum::{
     body::Body,
-    debug_handler,
-    extract::ConnectInfo, http::{Request, Response, Uri}, response::{Html, IntoResponse, Redirect},
+    extract::ConnectInfo, http::{Request, Response, Uri}, response::{Html, Redirect},
     Router,
 };
 use axum::http::StatusCode;
@@ -13,7 +12,7 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
 use utoipa::openapi::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-use std::{net::SocketAddr, time::Duration};
+use std::{time::Duration};
 
 const SWAGGER_URI: &str = "/swagger-ui";
 
@@ -53,7 +52,7 @@ async fn not_found(
 ) -> Result<Redirect, AppError> {
     let msg = format!("Endpoint not found: {uri}");
     debug!("IP: {}", addr.ip());
-    Err(AppError::exp(StatusCode::NOT_FOUND, &msg))
+    Err(AppError::exp(StatusCode::NOT_FOUND, msg))
 }
 
 fn add_swagger<S>(router: Router<S>, docs: OpenApi) -> Router<S>

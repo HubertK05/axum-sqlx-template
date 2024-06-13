@@ -1,23 +1,19 @@
 mod github;
 
 use crate::auth::oauth::github::GithubClient;
-use crate::config::{AbsoluteUri, OAuthAccess, OAuthConfiguration};
+use crate::config::{AbsoluteUri, OAuthConfiguration};
 use axum::async_trait;
 use axum::extract::FromRef;
 use oauth2::basic::{
-    BasicClient, BasicErrorResponse, BasicRevocationErrorResponse, BasicTokenIntrospectionResponse,
+    BasicErrorResponse, BasicRevocationErrorResponse, BasicTokenIntrospectionResponse,
     BasicTokenResponse,
 };
 use oauth2::{
-    basic::{BasicErrorResponseType, BasicTokenType},
-    AccessToken, AuthType, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
-    EmptyExtraTokenFields, EndpointNotSet, EndpointSet, HttpClientError, IntrospectionUrl,
-    RedirectUrl, RequestTokenError, RevocationUrl, Scope, StandardErrorResponse,
-    StandardRevocableToken, StandardTokenResponse, TokenUrl,
+    AccessToken, AuthorizationCode, CsrfToken, EndpointNotSet, EndpointSet, HttpClientError, RequestTokenError,
+    StandardRevocableToken,
 };
 use redis::{RedisWrite, ToRedisArgs};
 use reqwest::{Client, Url};
-use serde::Deserialize;
 use std::fmt::{Display, Formatter};
 
 type CustomOAuthClient = oauth2::Client<

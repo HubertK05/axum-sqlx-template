@@ -1,6 +1,6 @@
 use std::env;
 
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, FmtSubscriber};
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 pub fn setup_globals() {
     dotenvy::dotenv().ok();

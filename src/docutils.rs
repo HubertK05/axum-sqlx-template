@@ -1,9 +1,8 @@
 use std::{collections::{BTreeMap, HashMap}, fmt::Display, future::Future};
 
 use axum::{extract::{Path, Query}, handler::Handler, response::{Html, IntoResponse, IntoResponseParts}, routing::MethodRouter, Json, Router};
-use axum_extra::extract::CookieJar;
 use regex::Regex;
-use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn, PathItemBuilder}, request_body::RequestBody, Components, Content, Info, Object, ObjectBuilder, OneOf, OpenApi, PathItem, PathItemType, Paths, Ref, RefOr, Response, ResponseBuilder, Responses, Schema}, IntoParams, ToSchema};
+use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn, PathItemBuilder}, request_body::RequestBody, Components, Content, Info, ObjectBuilder, OpenApi, PathItem, PathItemType, Paths, Ref, RefOr, Response, ResponseBuilder, Schema}, IntoParams, ToSchema};
 use axum::http::StatusCode;
 
 pub trait DocHandler<T, S> {
@@ -105,14 +104,14 @@ pub trait DocExtractor {
     }
 }
 
-impl<'a, T> DocExtractor for Path<T>
+impl<T> DocExtractor for Path<T>
 where T: IntoParams {
     fn doc_extractor() -> Option<RequestPart> {
         Some(RequestPart::Params(T::into_params(|| { Some(ParameterIn::Path) })))
     }
 }
 
-impl<'a, T> DocExtractor for Query<T>
+impl<T> DocExtractor for Query<T>
 where T: IntoParams {
     fn doc_extractor() -> Option<RequestPart> {
         Some(RequestPart::Params(T::into_params(|| { Some(ParameterIn::Query) })))
@@ -387,6 +386,15 @@ pub struct DocRouter<S> {
     router: Router<S>,
 }
 
+impl<S> Default for DocRouter<S>
+where
+    S: Clone + Send + Sync + 'static
+ {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<S> DocRouter<S>
 where
     S: Clone + Send + Sync + 'static {
@@ -423,7 +431,7 @@ where
     }
 
     pub fn nest(self, path: &str, other: DocRouter<S>) -> Self {
-        let DocRouter { docs: other_docs, router: other_router } = other.into();
+        let DocRouter { docs: other_docs, router: other_router } = other;
         let mut docs = self.docs;
         
         let doc_path = into_document_form(path);
@@ -451,7 +459,7 @@ pub fn into_document_form(path: &str) -> String {
     let mut path = re.replace_all(path, ":").to_string();
 
     for elem in matches {
-        path = path.replacen(":", &format!("{{{}}}", &elem.as_str()[1..]), 1);
+        path = path.replacen(':', &format!("{{{}}}", &elem.as_str()[1..]), 1);
     }
 
     path

@@ -1,10 +1,10 @@
 use crate::auth::oauth::AuthProvider;
-use anyhow::{bail, Context};
-use axum::http::uri::{PathAndQuery, Scheme};
+use anyhow::{bail};
+use axum::http::uri::{Scheme};
 use axum::http::Uri;
 use config::{Config, ConfigError, File, FileFormat};
 use oauth2::{ClientId, ClientSecret};
-use serde::de::{Error, IntoDeserializer, Visitor};
+use serde::de::{Error, Visitor};
 use serde::{Deserialize, Deserializer};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -295,35 +295,43 @@ impl<'de> Deserialize<'de> for AbsoluteUri {
     }
 }
 
-#[test]
-fn absolute_path_with_custom_protocol() {
-    let s: String = String::from("x://abc/def");
-    let v: Result<AbsoluteUri, serde::de::value::Error> =
-        s.into_deserializer().deserialize_string(AbsoluteUriVisitor);
+#[cfg(test)]
+mod tests {
+    use serde::de::IntoDeserializer;
+    use serde::Deserializer;
+    use crate::config::{AbsoluteUri, AbsoluteUriVisitor};
 
-    assert!(v.is_err());
+    #[test]
+    fn absolute_path_with_custom_protocol() {
+        let s: String = String::from("x://abc/def");
+        let v: Result<AbsoluteUri, serde::de::value::Error> =
+            s.into_deserializer().deserialize_string(AbsoluteUriVisitor);
+
+        assert!(v.is_err());
+    }
+
+    #[test]
+    fn absolute_path_with_http_protocol() {
+        let s: String = String::from("http://abc/def");
+        let v: Result<AbsoluteUri, serde::de::value::Error> =
+            s.into_deserializer().deserialize_string(AbsoluteUriVisitor);
+        assert!(v.is_ok())
+    }
+
+    #[test]
+    fn relative_path() {
+        let s: String = String::from("/abc/def");
+        let v: Result<AbsoluteUri, serde::de::value::Error> =
+            s.into_deserializer().deserialize_string(AbsoluteUriVisitor);
+        assert!(v.is_err())
+    }
+
+    #[test]
+    fn domain_only() {
+        let s: String = String::from("tokio.rs");
+        let v: Result<AbsoluteUri, serde::de::value::Error> =
+            s.into_deserializer().deserialize_string(AbsoluteUriVisitor);
+        assert!(v.is_ok())
+    }
 }
 
-#[test]
-fn absolute_path_with_http_protocol() {
-    let s: String = String::from("http://abc/def");
-    let v: Result<AbsoluteUri, serde::de::value::Error> =
-        s.into_deserializer().deserialize_string(AbsoluteUriVisitor);
-    assert!(v.is_ok())
-}
-
-#[test]
-fn relative_path() {
-    let s: String = String::from("/abc/def");
-    let v: Result<AbsoluteUri, serde::de::value::Error> =
-        s.into_deserializer().deserialize_string(AbsoluteUriVisitor);
-    assert!(v.is_err())
-}
-
-#[test]
-fn domain_only() {
-    let s: String = String::from("tokio.rs");
-    let v: Result<AbsoluteUri, serde::de::value::Error> =
-        s.into_deserializer().deserialize_string(AbsoluteUriVisitor);
-    assert!(v.is_ok())
-}

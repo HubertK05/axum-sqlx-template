@@ -91,7 +91,7 @@ pub fn check_password_strength(password: &str, inputs: &[&str]) -> crate::Result
             .map_or(String::from("No warning. "), |w| w.to_string());
         let suggestions = feedback
             .suggestions()
-            .into_iter()
+            .iter()
             .map(|s| s.to_string())
             .collect::<Vec<String>>()
             .join(", ");

@@ -108,7 +108,7 @@ mod tests {
     #[case(params_vec!({} %1, %2, %3, ?4, ?5, ?6), vec![1.to_string(), 2.to_string(), 3.to_string(), 4.to_string(), 5.to_string(), 6.to_string()])]
     #[case(params_vec!({} %DisplayVsDebug, ?DisplayVsDebug), vec![format!("{DisplayVsDebug}"), format!("{DisplayVsDebug:?}")])]
     fn params_vec_expands_correctly(#[case] tested: Vec<String>, #[case] expected: Vec<String>) {
-        let expected: Vec<String> = expected.into_iter().map(|x| x.into()).collect();
+        let expected: Vec<String> = expected.into_iter().collect();
         assert_eq!(tested, expected);
     }
 }

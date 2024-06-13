@@ -1,21 +1,20 @@
 use anyhow::Context;
-use axum::extract::{FromRef, FromRequestParts, State};
+use axum::extract::{State};
 use axum::http::StatusCode;
-use axum::response::{Html, IntoResponse};
-use axum::{async_trait, debug_handler, Json, RequestPartsExt, Router};
+use axum::response::{Html};
+use axum::{debug_handler, Json};
 use axum_extra::extract::CookieJar;
-use redis::{aio::ConnectionLike, AsyncCommands, RedisResult};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::auth::jwt::{init_token_family, invalidate, refresh_jwt_session, Claims, Session};
+use crate::auth::jwt::{invalidate, Claims, Session};
 use crate::auth::{hash_password, is_correct_password, LoginForm, PasswordStrength, RegistrationForm};
 use crate::docutils::{get, post, DocRouter};
 use crate::errors::DbErrMap;
 use crate::mailer::Mailer;
 use crate::routes::auth::{VerificationEntry, VERIFICATION_EXPIRY};
 use crate::state::{AppState, JwtKeys};
-use crate::{errors::AppError, state::RdPool, AppRouter, AsyncRedisConn};
+use crate::{errors::AppError, state::RdPool};
 
 pub fn router() -> DocRouter<AppState> {
     DocRouter::new()

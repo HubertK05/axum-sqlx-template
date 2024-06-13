@@ -144,7 +144,7 @@ impl<'de> Visitor<'de> for EnvironmentVisitor {
         E: Error,
     {
         v.try_into()
-            .map_err(|_| E::invalid_value(serde::de::Unexpected::Str(&v), &self))
+            .map_err(|_| E::invalid_value(serde::de::Unexpected::Str(v), &self))
     }
 
     fn visit_string<E>(self, v: String) -> Result<Self::Value, E>

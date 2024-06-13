@@ -6,12 +6,10 @@ use crate::routes::auth::{
     update_password_by_email, verify_account, VerificationEntry, PASSWORD_CHANGE_EXPIRY,
 };
 use crate::state::{AppState, RdPool};
-use crate::AppRouter;
 use anyhow::Context;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
-use axum::{Json, Router};
+use axum::{Json};
 use lettre::Address;
 use serde::Deserialize;
 use sqlx::PgPool;

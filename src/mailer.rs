@@ -1,6 +1,5 @@
 pub mod templates;
 
-use anyhow::Context;
 use axum::extract::FromRef;
 use lettre::message::Mailbox;
 use lettre::transport::smtp::authentication::Credentials;
@@ -30,7 +29,7 @@ pub struct Mailer {
 impl Mailer {
     pub fn new(frontend_domain: String, options: &SmtpConfiguration) -> Self {
         Self {
-            transport: AsyncSmtpTransport::<Tokio1Executor>::relay(&*options.relay)
+            transport: AsyncSmtpTransport::<Tokio1Executor>::relay(&options.relay)
                 .unwrap()
                 .credentials(Credentials::new(
                     options.email.clone(),

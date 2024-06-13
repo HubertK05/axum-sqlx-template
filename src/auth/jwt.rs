@@ -1,20 +1,17 @@
 use crate::auth::safe_cookie;
-use crate::config::{AbsoluteUri, JwtConfiguration};
 use crate::docutils::DocExtractor;
 use crate::errors::AppError;
-use crate::state::{AppState, JwtKeys, RdPool};
+use crate::state::{JwtKeys, RdPool};
 use crate::AsyncRedisConn;
 use anyhow::Context;
 use axum::extract::{FromRef, FromRequestParts};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::{async_trait, RequestPartsExt};
-use axum_extra::extract::cookie::{Cookie, SameSite};
 use axum_extra::extract::CookieJar;
 use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use redis::{cmd, AsyncCommands, RedisResult};
-use redis_test::{MockCmd, MockRedisConnection};
+use redis::{RedisResult};
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use uuid::Uuid;
@@ -126,7 +123,7 @@ impl Session {
 
         if TokenFamily::is_valid_refresh_token(rds, claims).await? {
             let token_pair = continue_token_family(rds, jwt_keys, claims.new_member()).await?;
-            return Ok(token_pair.add_cookies(jar));
+            Ok(token_pair.add_cookies(jar))
         } else {
             TokenFamily::invalidate(rds, claims.family).await?;
             Err(AppError::exp(
@@ -190,7 +187,7 @@ pub async fn refresh_jwt_session<'c>(
 
     if TokenFamily::is_valid_refresh_token(rds, claims).await? {
         let token_pair = continue_token_family(rds, &jwt_keys, claims.new_member()).await?;
-        return Ok(token_pair.add_cookies(jar));
+        Ok(token_pair.add_cookies(jar))
     } else {
         TokenFamily::invalidate(rds, claims.family).await?;
         Err(AppError::exp(
@@ -291,7 +288,7 @@ impl DocExtractor for Claims {}
 #[cfg(test)]
 mod tests {
     use redis::cmd;
-    use redis_test::MockCmd;
+    use redis_test::{MockCmd, MockRedisConnection};
     use uuid::uuid;
 
     use super::*;

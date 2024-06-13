@@ -1,8 +1,5 @@
-use crate::{docutils::DocRouter, errors::AppError, state::AppState, AppRouter, AsyncRedisConn};
-use axum::Router;
-use lettre::Address;
+use crate::{docutils::DocRouter, errors::AppError, state::AppState, AsyncRedisConn};
 use redis::{FromRedisValue, RedisResult, ToRedisArgs};
-use serde::Deserialize;
 use sqlx::PgPool;
 use time::Duration;
 use uuid::Uuid;
