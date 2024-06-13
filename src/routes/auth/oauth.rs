@@ -1,11 +1,11 @@
 use crate::auth::jwt::{init_token_family, Session};
 use crate::auth::oauth::{AuthProvider, OAuthClient, OAuthClients, OAuthUser};
+use crate::docutils::{get, DocRouter};
 use crate::errors::AppError;
 use crate::AppRouter;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect};
-use axum::routing::get;
 use axum::{debug_handler, Json, Router};
 use axum_extra::extract::CookieJar;
 use oauth2::basic::BasicTokenResponse;
@@ -14,16 +14,17 @@ use redis::{AsyncCommands, RedisResult};
 use serde::Deserialize;
 use sqlx::types::Uuid;
 use sqlx::{PgExecutor, PgPool};
+use utoipa::IntoParams;
 
 use crate::state::{AppState, JwtKeys, RdPool};
 
-pub fn router() -> AppRouter {
-    Router::new()
+pub fn router() -> DocRouter<AppState> {
+    DocRouter::new()
         .route("/github/callback", get(handle_github_callback))
         .route("/github", get(issue_url))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct OAuthQuery {
     code: AuthorizationCode,
     state: CsrfToken,
@@ -58,7 +59,7 @@ async fn handle_github_callback(
     State(db): State<PgPool>,
     State(oauth): State<OAuthClients>,
     Query(query): Query<OAuthQuery>,
-) -> crate::Result<impl IntoResponse> {
+) -> crate::Result<(CookieJar, Html<String>)> {
     let is_matching_state: bool = CsrfState::check(&mut rds, &query.state).await?;
     if !is_matching_state {
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid CSRF state"));
@@ -95,7 +96,7 @@ async fn handle_github_callback(
 async fn issue_url(
     State(mut rds): State<RdPool>,
     State(oauth): State<OAuthClients>,
-) -> crate::Result<impl IntoResponse> {
+) -> crate::Result<axum::response::Redirect> {
     let (url, csrf_token) = oauth.github.get_url_and_state();
     trace!("Issued federated authentication method url");
     CsrfState::add(&mut rds, AuthProvider::Github, &csrf_token).await?;

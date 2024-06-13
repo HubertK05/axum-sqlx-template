@@ -18,16 +18,16 @@ use std::{net::SocketAddr, time::Duration};
 const SWAGGER_URI: &str = "/swagger-ui";
 
 pub fn app(app_state: AppState) -> Router {
-    let (mut documented_router, docs) = DocRouter::new("template", "0.1.0")
+    let (mut documented_router, docs) = DocRouter::new()
         .route("/", get(home_page))
-        .finish_doc();
+        .nest("/auth", auth::router())
+        .finish_doc("template", "0.1.0");
 
     if app_state.env().is_dev() {
         documented_router = add_swagger(documented_router, docs);
     };
 
     documented_router
-        .nest("/auth", auth::router())
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<Body>| {
@@ -42,9 +42,9 @@ pub fn app(app_state: AppState) -> Router {
         .with_state(app_state)
 }
 
-async fn home_page() -> Result<(StatusCode, Html<&'static str>), AppError> {
+async fn home_page() -> Result<Html<&'static str>, AppError> {
     trace!("Welcome to the API home page!");
-    Ok((StatusCode::OK, Html("<h1>API home page</h1>")))
+    Ok(Html("<h1>API home page</h1>"))
 }
 
 async fn not_found(

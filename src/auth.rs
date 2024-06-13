@@ -7,6 +7,7 @@ use axum_extra::extract::cookie::{Cookie, SameSite};
 use lettre::Address;
 use serde::Deserialize;
 use time::Duration;
+use utoipa::ToSchema;
 
 pub mod jwt;
 pub mod oauth;
@@ -42,14 +43,14 @@ pub fn safe_cookie<'c>(base: impl Into<Cookie<'c>>, max_age: Duration) -> Cookie
         .build()
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct RegistrationForm {
     pub login: String,
     pub email: Address,
     pub password: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct LoginForm {
     pub login: String,
     pub password: String,

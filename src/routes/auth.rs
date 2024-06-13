@@ -1,4 +1,4 @@
-use crate::{errors::AppError, AppRouter, AsyncRedisConn};
+use crate::{docutils::DocRouter, errors::AppError, state::AppState, AppRouter, AsyncRedisConn};
 use axum::Router;
 use lettre::Address;
 use redis::{FromRedisValue, RedisResult, ToRedisArgs};
@@ -15,8 +15,8 @@ const VERIFICATION_EXPIRY: Duration = Duration::days(7);
 const PASSWORD_CHANGE_EXPIRY: Duration = Duration::minutes(5);
 
 
-pub fn router() -> AppRouter {
-    Router::new()
+pub fn router() -> DocRouter<AppState> {
+    DocRouter::new()
         .nest("/oauth2", oauth::router())
         .merge(jwt::router())
         .merge(utils::router())
