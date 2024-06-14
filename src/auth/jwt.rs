@@ -53,7 +53,7 @@ impl TokenPair {
 impl Claims {
     fn family_root(user_id: Uuid) -> Self {
         let valid_until =
-            jsonwebtoken::get_current_timestamp() + JWT_ACCESS_TOKEN_EXPIRY.whole_seconds() as u64;
+            jsonwebtoken::get_current_timestamp() + JWT_REFRESH_TOKEN_EXPIRY.whole_seconds() as u64;
         let token_id = Uuid::new_v4();
 
         Self {
@@ -64,9 +64,20 @@ impl Claims {
         }
     }
 
-    fn new_member(self) -> Self {
+    fn new_access_member(self) -> Self {
         let valid_until =
             jsonwebtoken::get_current_timestamp() + JWT_ACCESS_TOKEN_EXPIRY.whole_seconds() as u64;
+
+        Self {
+            jti: Uuid::new_v4(),
+            exp: valid_until,
+            ..self
+        }
+    }
+
+    fn new_refresh_member(self) -> Self {
+        let valid_until =
+            jsonwebtoken::get_current_timestamp() + JWT_REFRESH_TOKEN_EXPIRY.whole_seconds() as u64;
 
         Self {
             jti: Uuid::new_v4(),
@@ -122,7 +133,7 @@ impl Session {
             .map_err(|_| AppError::exp(StatusCode::FORBIDDEN, "Session expired"))?;
 
         if TokenFamily::is_valid_refresh_token(rds, claims).await? {
-            let token_pair = continue_token_family(rds, jwt_keys, claims.new_member()).await?;
+            let token_pair = continue_token_family(rds, jwt_keys, claims.new_refresh_member()).await?;
             Ok(token_pair.add_cookies(jar))
         } else {
             TokenFamily::invalidate(rds, claims.family).await?;
@@ -148,7 +159,7 @@ async fn continue_token_family(
     jwt_secrets: &JwtKeys,
     refresh_claims: Claims,
 ) -> Result<TokenPair, AppError> {
-    let new_refresh_claims = refresh_claims.new_member();
+    let new_refresh_claims = refresh_claims.new_refresh_member();
     register_tokens(rds, jwt_secrets, new_refresh_claims).await
 }
 
@@ -160,7 +171,7 @@ async fn register_tokens(
     let refresh_token = encode_jwt(refresh_claims, jwt_keys.encoding_refresh())
         .context("Failed to encode refresh JWT")?;
 
-    let access_claims = refresh_claims.new_member();
+    let access_claims = refresh_claims.new_access_member();
     let access_token = encode_jwt(access_claims, jwt_keys.encoding_access())
         .context("Failed to encode access JWT")?;
 
@@ -186,7 +197,7 @@ pub async fn refresh_jwt_session<'c>(
         .map_err(|_| AppError::exp(StatusCode::FORBIDDEN, "Session expired"))?;
 
     if TokenFamily::is_valid_refresh_token(rds, claims).await? {
-        let token_pair = continue_token_family(rds, &jwt_keys, claims.new_member()).await?;
+        let token_pair = continue_token_family(rds, &jwt_keys, claims.new_refresh_member()).await?;
         Ok(token_pair.add_cookies(jar))
     } else {
         TokenFamily::invalidate(rds, claims.family).await?;
@@ -314,7 +325,7 @@ mod tests {
     #[test]
     fn token_family_continued_with_good_family_id() {
         let claims = Claims::family_root(USER_ID);
-        let new_claims = claims.new_member();
+        let new_claims = claims.new_refresh_member();
 
         assert_eq!(claims.family, new_claims.family);
     }
@@ -361,7 +372,7 @@ mod tests {
     #[tokio::test]
     async fn continue_family_changes_correct_valid_token_in_redis() {
         let old_refresh_claims = Claims::family_root(USER_ID);
-        let new_refresh_claims = old_refresh_claims.new_member();
+        let new_refresh_claims = old_refresh_claims.new_refresh_member();
 
         let mut conn = MockRedisConnection::new(vec![MockCmd::new(
             cmd("SET")
