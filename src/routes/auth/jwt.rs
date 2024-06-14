@@ -14,6 +14,7 @@ use crate::errors::DbErrMap;
 use crate::mailer::Mailer;
 use crate::routes::auth::{VerificationEntry, VERIFICATION_EXPIRY};
 use crate::state::{AppState, JwtKeys};
+use crate::AsyncRedisConn;
 use crate::{errors::AppError, state::RdPool};
 
 pub fn router() -> DocRouter<AppState> {
@@ -27,12 +28,23 @@ pub fn router() -> DocRouter<AppState> {
 
 async fn register(
     jar: CookieJar,
-    State(mut rds): State<RdPool>,
+    State(rds): State<RdPool>,
     State(jwt_keys): State<JwtKeys>,
     State(mailer): State<Mailer>,
     State(db): State<PgPool>,
     Json(body): Json<RegistrationForm>,
 ) -> crate::Result<CookieJar> {
+    try_register(db, rds, mailer, jar, jwt_keys, body).await
+}
+
+async fn try_register(
+    db: PgPool,
+    mut rds: impl AsyncRedisConn,
+    mailer: Mailer,
+    jar: CookieJar,
+    jwt_keys: JwtKeys,
+    body: RegistrationForm
+) -> Result<CookieJar, AppError> {
     // TODO: check for session
     body.check_password_strength()?;
 
@@ -71,10 +83,20 @@ async fn register(
 async fn login(
     jar: CookieJar,
     State(jwt_keys): State<JwtKeys>,
-    State(mut rds): State<RdPool>,
+    State(rds): State<RdPool>,
     State(db): State<PgPool>,
     Json(body): Json<LoginForm>,
 ) -> crate::Result<CookieJar> {
+    try_login(db, rds, jwt_keys, jar, body).await
+}
+
+async fn try_login(
+    db: PgPool,
+    mut rds: impl AsyncRedisConn,
+    jwt_keys: JwtKeys,
+    jar: CookieJar,
+    body: LoginForm
+) -> Result<CookieJar, AppError> {
     // TODO: check for session
     let (user_id, password_hash) = query!(
         r#"

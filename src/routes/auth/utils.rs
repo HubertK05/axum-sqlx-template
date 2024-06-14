@@ -6,10 +6,11 @@ use crate::routes::auth::{
     update_password_by_email, verify_account, VerificationEntry, PASSWORD_CHANGE_EXPIRY,
 };
 use crate::state::{AppState, RdPool};
+use crate::AsyncRedisConn;
 use anyhow::Context;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::{Json};
+use axum::Json;
 use lettre::Address;
 use serde::Deserialize;
 use sqlx::PgPool;
@@ -29,22 +30,30 @@ struct PasswordChangeRequestInput {
 }
 
 async fn request_password_change(
-    State(mut rds): State<RdPool>,
+    State(rds): State<RdPool>,
     State(mailer): State<Mailer>,
     Json(body): Json<PasswordChangeRequestInput>,
 ) -> crate::Result<()> {
+    setup_password_change(rds, mailer, body.email).await
+}
+
+async fn setup_password_change(
+    mut rds: impl AsyncRedisConn,
+    mailer: Mailer,
+    email: Address,
+) -> crate::Result<()> {
     let token = Uuid::new_v4();
-    mailer
-        .send_password_change_request_mail(token, body.email.clone(), Some(PASSWORD_CHANGE_EXPIRY))
-        .await
-        .context("Failed to send mail")?;
     VerificationEntry::set(
         &mut rds,
         token,
-        body.email.to_string(),
+        email.to_string(),
         PASSWORD_CHANGE_EXPIRY,
     )
     .await?;
+    mailer
+        .send_password_change_request_mail(token, email, Some(PASSWORD_CHANGE_EXPIRY))
+        .await
+        .context("Failed to send mail")?;
 
     Ok(())
 }
@@ -61,11 +70,20 @@ struct PasswordChangeInput {
 
 async fn change_password(
     State(db): State<PgPool>,
-    State(mut rds): State<RdPool>,
+    State(rds): State<RdPool>,
     Query(q): Query<PasswordChangeTokenQuery>,
     Json(body): Json<PasswordChangeInput>,
 ) -> crate::Result<()> {
-    let Some(target_address): Option<String> = VerificationEntry::get(&mut rds, q.token).await?
+    try_change_password(db, rds, q.token, body.password).await
+}
+
+async fn try_change_password(
+    db: PgPool,
+    mut rds: impl AsyncRedisConn,
+    token: Uuid,
+    password: String,
+) -> crate::Result<()> {
+    let Some(target_address): Option<String> = VerificationEntry::get(&mut rds, token).await?
     else {
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Access denied"));
     };
@@ -85,12 +103,12 @@ async fn change_password(
     let mut inputs = vec![target_address.as_ref()];
     inputs.extend(login.as_deref());
 
-    check_password_strength(&body.password, inputs.as_slice())?;
+    check_password_strength(&password, inputs.as_slice())?;
 
     // TODO consider converting to Address
     // let email = Address::try_from(target_address).unwrap();
-    VerificationEntry::delete(&mut rds, q.token).await?;
-    let hashed_password = hash_password(body.password);
+    VerificationEntry::delete(&mut rds, token).await?;
+    let hashed_password = hash_password(password);
 
     update_password_by_email(&db, target_address, hashed_password).await?;
 
@@ -104,15 +122,23 @@ struct VerificationToken {
 
 async fn verify_address(
     State(db): State<PgPool>,
-    State(mut rds): State<RdPool>,
+    State(rds): State<RdPool>,
     Query(token): Query<VerificationToken>,
 ) -> crate::Result<()> {
-    let Some(user_id) = VerificationEntry::get(&mut rds, token.token).await? else {
+    try_verify_address(db, rds, token.token).await
+}
+
+async fn try_verify_address(
+    db: PgPool,
+    mut rds: impl AsyncRedisConn,
+    token: Uuid,
+) -> crate::Result<()> {
+    let Some(user_id) = VerificationEntry::get(&mut rds, token).await? else {
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid token"));
     };
 
     verify_account(&db, user_id).await?;
-    VerificationEntry::delete(&mut rds, token.token).await?;
+    VerificationEntry::delete(&mut rds, token).await?;
 
     Ok(())
 }

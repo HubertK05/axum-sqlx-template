@@ -2,6 +2,7 @@ use crate::auth::jwt::{Session};
 use crate::auth::oauth::{AuthProvider, OAuthClient, OAuthClients, OAuthUser};
 use crate::docutils::{get, DocRouter};
 use crate::errors::AppError;
+use crate::AsyncRedisConn;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, Redirect};
@@ -32,12 +33,12 @@ struct OAuthQuery {
 struct CsrfState;
 
 impl CsrfState {
-    async fn check(rds: &mut RdPool, csrf_token: &CsrfToken) -> RedisResult<bool> {
+    async fn check(rds: &mut impl AsyncRedisConn, csrf_token: &CsrfToken) -> RedisResult<bool> {
         rds.del(Self::key(csrf_token)).await
     }
 
     async fn add(
-        rds: &mut RdPool,
+        rds: &mut impl AsyncRedisConn,
         auth_provider: AuthProvider,
         csrf_token: &CsrfToken,
     ) -> RedisResult<()> {
@@ -54,10 +55,21 @@ impl CsrfState {
 async fn handle_github_callback(
     jar: CookieJar,
     State(jwt_keys): State<JwtKeys>,
-    State(mut rds): State<RdPool>,
+    State(rds): State<RdPool>,
     State(db): State<PgPool>,
     State(oauth): State<OAuthClients>,
     Query(query): Query<OAuthQuery>,
+) -> crate::Result<(CookieJar, Html<String>)> {
+    read_oauth_response(db, rds, oauth, jar, jwt_keys, query).await
+}
+
+async fn read_oauth_response(
+    db: PgPool,
+    mut rds: impl AsyncRedisConn,
+    oauth: OAuthClients,
+    jar: CookieJar,
+    jwt_keys: JwtKeys,
+    query: OAuthQuery
 ) -> crate::Result<(CookieJar, Html<String>)> {
     let is_matching_state: bool = CsrfState::check(&mut rds, &query.state).await?;
     if !is_matching_state {
@@ -114,6 +126,7 @@ async fn create_user_with_federated_credential(
     tx.commit().await?;
     Ok(user_id)
 }
+
 async fn select_user_id_from_federated_credentials(
     db: impl PgExecutor<'_>,
     provider: &AuthProvider,
@@ -152,6 +165,7 @@ async fn insert_into_federated_credentials(
     .await?;
     Ok(())
 }
+
 async fn insert_into_users(
     db: impl PgExecutor<'_>,
     password: Option<String>,
