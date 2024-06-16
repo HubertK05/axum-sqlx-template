@@ -88,17 +88,7 @@ async fn try_change_password(
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Access denied"));
     };
 
-    let login = query!(
-        r#"
-        SELECT login
-        FROM users
-        WHERE email = $1
-        "#,
-        target_address
-    )
-    .fetch_one(&db)
-    .await?
-    .login;
+    let login = select_login_by_email(&db, &target_address).await?;
 
     let mut inputs = vec![target_address.as_ref()];
     inputs.extend(login.as_deref());
@@ -113,6 +103,22 @@ async fn try_change_password(
     update_password_by_email(&db, target_address, hashed_password).await?;
 
     Ok(())
+}
+
+async fn select_login_by_email(db: &PgPool, address: impl AsRef<str>) -> sqlx::Result<Option<String>> {
+    let login = query!(
+        r#"
+        SELECT login
+        FROM users
+        WHERE email = $1
+        "#,
+        address.as_ref()
+    )
+    .fetch_one(db)
+    .await?
+    .login;
+
+    Ok(login)
 }
 
 #[derive(Deserialize, IntoParams)]

@@ -50,25 +50,7 @@ async fn try_register(
 
     let password_hash = hash_password(body.password);
 
-    let user_id = query!(
-        r#"
-        INSERT INTO users (login, password, email, verified)
-        VALUES ($1, $2, $3, false)
-        RETURNING id
-        "#,
-        &body.login.as_str(),
-        password_hash,
-        AsRef::<str>::as_ref(&body.email),
-    )
-    .fetch_one(&db)
-    .await
-    .map_db_err(|e| {
-        e.unique(
-            StatusCode::CONFLICT,
-            "Cannot create user with provided data",
-        )
-    })?
-    .id;
+    let user_id = insert_user_unverified(&db, &body.login, password_hash, &body.email).await?;
 
     let token_id = Uuid::new_v4();
     VerificationEntry::set(&mut rds, token_id, user_id, VERIFICATION_EXPIRY).await?;
@@ -78,6 +60,30 @@ async fn try_register(
         .context("Failed to send verification mail")?;
 
     Session::set(&mut rds, jar, &jwt_keys, user_id).await
+}
+
+async fn insert_user_unverified(db: &PgPool, login: impl AsRef<str>, password_hash: impl AsRef<str>, email: impl AsRef<str>) -> crate::Result<Uuid> {
+    let user_id = query!(
+        r#"
+        INSERT INTO users (login, password, email, verified)
+        VALUES ($1, $2, $3, false)
+        RETURNING id
+        "#,
+        login.as_ref(),
+        password_hash.as_ref(),
+        email.as_ref(),
+    )
+    .fetch_one(db)
+    .await
+    .map_db_err(|e| {
+        e.unique(
+            StatusCode::CONFLICT,
+            "Cannot create user with provided data",
+        )
+    })?
+    .id;
+
+    Ok(user_id)
 }
 
 async fn login(
@@ -98,17 +104,8 @@ async fn try_login(
     body: LoginForm
 ) -> Result<CookieJar, AppError> {
     // TODO: check for session
-    let (user_id, password_hash) = query!(
-        r#"
-    SELECT id, password FROM users
-    WHERE login = $1
-    "#,
-        &body.login
-    )
-    .fetch_optional(&db)
-    .await?
-    .ok_or(AppError::exp(StatusCode::FORBIDDEN, "Invalid credentials"))
-    .map(|r| (r.id, r.password))?;
+
+    let (user_id, password_hash) = select_user_by_login(&db, &body.login).await?;
 
     if let Some(password_hash) = password_hash {
         if is_correct_password(body.password, password_hash) {
@@ -120,6 +117,22 @@ async fn try_login(
         StatusCode::FORBIDDEN,
         "Invalid login credentials",
     )) // precise cause of error is hidden from the end user
+}
+
+async fn select_user_by_login(db: &PgPool, login: impl AsRef<str>) -> crate::Result<(Uuid, Option<String>)> {
+    let (user_id, password_hash) = query!(
+        r#"
+    SELECT id, password FROM users
+    WHERE login = $1
+    "#,
+        login.as_ref()
+    )
+    .fetch_optional(db)
+    .await?
+    .ok_or(AppError::exp(StatusCode::FORBIDDEN, "Invalid credentials"))
+    .map(|r| (r.id, r.password))?;
+
+    Ok((user_id, password_hash))
 }
 
 #[debug_handler(state = AppState)]
