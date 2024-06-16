@@ -71,36 +71,25 @@ async fn read_oauth_response(
     jwt_keys: JwtKeys,
     query: OAuthQuery
 ) -> crate::Result<(CookieJar, Html<String>)> {
+    // TODO: maybe handle logic inside CsrfState::check function
     let is_matching_state: bool = CsrfState::check(&mut rds, &query.state).await?;
     if !is_matching_state {
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid CSRF state"));
     }
     trace!("Matching CSRF state for {}", query.state.secret());
 
-    let token: BasicTokenResponse = oauth.github.exchange_code(query.code).await?;
-    let user = oauth.github.get_user(token.access_token()).await?;
-    let subject_id = user.subject_id();
-    let auth_provider = AuthProvider::Github;
-    if let Some(user_id) =
-        select_user_id_from_federated_credentials(&db, &auth_provider, &subject_id).await?
-    {
-        let jar = Session::set(&mut rds, jar, &jwt_keys, user_id).await?;
-        trace!("{user_id} logged in with {auth_provider}");
-        Ok((
-            jar,
-            Html(format!("<h1>Authenticated with {auth_provider}</h1>")),
-        ))
-    } else {
-        let user_id =
-            create_user_with_federated_credential(&db, &auth_provider, &subject_id).await?;
-        let jar = Session::set(&mut rds, jar, &jwt_keys, user_id).await?;
-        trace!("{user_id} registered with {auth_provider}");
+    let github_token: BasicTokenResponse = oauth.github.exchange_code(query.code).await?;
+    let github_user = oauth.github.get_user(github_token.access_token()).await?;
+    let auth_provider = oauth.github.key();
+    let github_user_id = github_user.subject_id();
+    
+    let user_id = get_or_create_user(&db, &auth_provider, &github_user_id).await?;
+    let jar = Session::set(&mut rds, jar, &jwt_keys, user_id).await?;
 
-        Ok((
-            jar,
-            Html(format!("<h1>Authenticated with {auth_provider}</h1>")),
-        ))
-    }
+    Ok((
+        jar,
+        Html(format!("<h1>Authenticated with {auth_provider}</h1>")),
+    ))
 }
 
 #[debug_handler(state = AppState)]
@@ -115,7 +104,27 @@ async fn issue_url(
     Ok(Redirect::to(url.as_str()))
 }
 
-async fn create_user_with_federated_credential(
+async fn get_or_create_user(
+    db: &PgPool,
+    auth_provider: &AuthProvider,
+    subject_id: &str,
+) -> sqlx::Result<Uuid> {
+    let res = if let Some(user_id) =
+        select_user_id_from_federated_credentials(db, &auth_provider, subject_id).await?
+    {
+        trace!("Authenticating {user_id} with {auth_provider}");
+        user_id
+    } else {
+        let user_id =
+            create_user_with_federated_credentials(db, &auth_provider, subject_id).await?;
+        trace!("Registering {user_id} with {auth_provider}");
+        user_id
+    };
+
+    Ok(res)
+}
+
+async fn create_user_with_federated_credentials(
     db: &PgPool,
     auth_provider: &AuthProvider,
     subject_id: &str,
