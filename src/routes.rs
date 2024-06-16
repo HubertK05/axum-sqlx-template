@@ -1,17 +1,27 @@
 mod auth;
 
-use crate::{docutils::{get, DocRouter}, errors::AppError, state::{AppState, RdPool}, AsyncRedisConn
-};
-use axum::{
-    body::Body, debug_handler, extract::{ConnectInfo, Request, State}, http::{Response, Uri}, middleware::{self, Next}, response::{Html, IntoResponse, Redirect}, Router
+use crate::{
+    docutils::{get, DocRouter},
+    errors::AppError,
+    state::{AppState, RdPool},
+    AsyncRedisConn,
 };
 use axum::http::StatusCode;
+use axum::{
+    body::Body,
+    debug_handler,
+    extract::{ConnectInfo, Request, State},
+    http::{Response, Uri},
+    middleware::{self, Next},
+    response::{Html, IntoResponse, Redirect},
+    Router,
+};
 use redis::RedisResult;
+use std::time::Duration;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
 use utoipa::openapi::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-use std::{time::Duration};
 
 const SWAGGER_URI: &str = "/swagger-ui";
 
@@ -55,7 +65,11 @@ async fn not_found(
     Err(AppError::exp(StatusCode::NOT_FOUND, msg))
 }
 
-async fn increment_visit_count(State(rds): State<RdPool>, req: Request, next: Next) -> crate::Result<impl IntoResponse> {
+async fn increment_visit_count(
+    State(rds): State<RdPool>,
+    req: Request,
+    next: Next,
+) -> crate::Result<impl IntoResponse> {
     let path = req.uri().path().to_string();
     let _ = tokio::spawn(async move {
         let mut rds = rds;
@@ -68,7 +82,10 @@ async fn increment_visit_count(State(rds): State<RdPool>, req: Request, next: Ne
 struct EndpointVisits;
 
 impl EndpointVisits {
-    async fn increment(rds: &mut impl AsyncRedisConn, endpoint: impl AsRef<str>) -> RedisResult<()>{
+    async fn increment(
+        rds: &mut impl AsyncRedisConn,
+        endpoint: impl AsRef<str>,
+    ) -> RedisResult<()> {
         rds.incr(Self::key(endpoint.as_ref()), 1).await
     }
 
@@ -79,7 +96,8 @@ impl EndpointVisits {
 
 fn add_swagger<S>(router: Router<S>, docs: OpenApi) -> Router<S>
 where
-    S: Clone + Send + Sync + 'static {
+    S: Clone + Send + Sync + 'static,
+{
     info!("Enabling Swagger UI");
     router.merge(SwaggerUi::new(SWAGGER_URI).url("/api-doc/openapi.json", docs))
 }

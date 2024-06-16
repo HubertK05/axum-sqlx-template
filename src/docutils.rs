@@ -1,9 +1,27 @@
-use std::{collections::{BTreeMap, HashMap}, fmt::Display, future::Future};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::Display,
+    future::Future,
+};
 
-use axum::{extract::{Path, Query}, handler::Handler, response::{Html, IntoResponse, IntoResponseParts}, routing::MethodRouter, Json, Router};
-use regex::Regex;
-use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn, PathItemBuilder}, request_body::RequestBody, Components, Content, Info, ObjectBuilder, OpenApi, PathItem, PathItemType, Paths, Ref, RefOr, Response, ResponseBuilder, Schema}, IntoParams, ToSchema};
 use axum::http::StatusCode;
+use axum::{
+    extract::{Path, Query},
+    handler::Handler,
+    response::{Html, IntoResponse, IntoResponseParts},
+    routing::MethodRouter,
+    Json, Router,
+};
+use regex::Regex;
+use utoipa::{
+    openapi::{
+        path::{Operation, Parameter, ParameterIn, PathItemBuilder},
+        request_body::RequestBody,
+        Components, Content, Info, ObjectBuilder, OpenApi, PathItem, PathItemType, Paths, Ref,
+        RefOr, Response, ResponseBuilder, Schema,
+    },
+    IntoParams, ToSchema,
+};
 
 pub struct TypedSchema {
     name: String,
@@ -26,11 +44,12 @@ pub trait DocHandler<T, S> {
     fn response_docs(&self) -> Option<TypedSchema>;
 }
 
-impl<F, S, Fut, R> DocHandler<((), ), S> for F
+impl<F, S, Fut, R> DocHandler<((),), S> for F
 where
-    F: Handler<((), ), S> + FnOnce() -> Fut,
+    F: Handler<((),), S> + FnOnce() -> Fut,
     Fut: Future<Output = R>,
-    R: IntoResponse + DocResponse {
+    R: IntoResponse + DocResponse,
+{
     fn extract_docs(&self) -> Vec<RequestPart> {
         vec![]
     }
@@ -71,30 +90,42 @@ macro_rules! impl_method_router {
     ($ty:ident, $en:ident) => {
         pub fn $ty<H: Handler<T, S> + DocHandler<T, S>, T: 'static>(self, handler: H) -> Self {
             let mut docs = self.docs;
-            docs.insert(PathItemType::$en, HandlerDocs::from_signature(handler.clone()));
-            
+            docs.insert(
+                PathItemType::$en,
+                HandlerDocs::from_signature(handler.clone()),
+            );
+
             Self {
                 docs,
                 curr_method: PathItemType::$en,
-                method_router: self.method_router.$ty(handler)
+                method_router: self.method_router.$ty(handler),
             }
         }
-    }
+    };
 }
 
 macro_rules! impl_method_router_start {
     ($ty:ident, $en:ident) => {
-        pub fn $ty<H: Handler<T, S> + DocHandler<T, S>, T: 'static, S: Clone + Send + Sync + 'static>(handler: H) -> DocMethodRouter<S> {
+        pub fn $ty<
+            H: Handler<T, S> + DocHandler<T, S>,
+            T: 'static,
+            S: Clone + Send + Sync + 'static,
+        >(
+            handler: H,
+        ) -> DocMethodRouter<S> {
             let mut docs = PathDocs::new();
-            docs.insert(PathItemType::$en, HandlerDocs::from_signature(handler.clone()));
-            
+            docs.insert(
+                PathItemType::$en,
+                HandlerDocs::from_signature(handler.clone()),
+            );
+
             DocMethodRouter {
                 docs,
                 curr_method: PathItemType::$en,
-                method_router: axum::routing::$ty(handler)
+                method_router: axum::routing::$ty(handler),
             }
         }
-    }
+    };
 }
 
 impl_doc_handler!(T1);
@@ -121,24 +152,38 @@ pub trait DocExtractor {
 }
 
 impl<T> DocExtractor for Path<T>
-where T: IntoParams {
+where
+    T: IntoParams,
+{
     fn doc_extractor() -> Option<RequestPart> {
-        Some(RequestPart::Params(T::into_params(|| { Some(ParameterIn::Path) })))
+        Some(RequestPart::Params(T::into_params(|| {
+            Some(ParameterIn::Path)
+        })))
     }
 }
 
 impl<T> DocExtractor for Query<T>
-where T: IntoParams {
+where
+    T: IntoParams,
+{
     fn doc_extractor() -> Option<RequestPart> {
-        Some(RequestPart::Params(T::into_params(|| { Some(ParameterIn::Query) })))
+        Some(RequestPart::Params(T::into_params(|| {
+            Some(ParameterIn::Query)
+        })))
     }
 }
 
 impl<'a, T> DocExtractor for Json<T>
-where T: ToSchema<'a> {
+where
+    T: ToSchema<'a>,
+{
     fn doc_extractor() -> Option<RequestPart> {
         let (name, schema) = T::schema();
-        Some(RequestPart::Schema(TypedSchema::new(name.to_string(), ContentType::Json, schema)))
+        Some(RequestPart::Schema(TypedSchema::new(
+            name.to_string(),
+            ContentType::Json,
+            schema,
+        )))
     }
 }
 
@@ -152,18 +197,32 @@ pub trait DocResponse {
 }
 
 impl<'a, T> DocResponse for Json<T>
-where T: ToSchema<'a> {
+where
+    T: ToSchema<'a>,
+{
     fn doc_response() -> Option<TypedSchema> {
         let (name, schema) = T::schema();
-        Some(TypedSchema::new(name.to_string(), ContentType::Json, schema))
+        Some(TypedSchema::new(
+            name.to_string(),
+            ContentType::Json,
+            schema,
+        ))
     }
 }
 
 impl<T> DocResponse for Html<T> {
     fn doc_response() -> Option<TypedSchema> {
-        let schema = Schema::Object(ObjectBuilder::new().schema_type(utoipa::openapi::SchemaType::String).build());
+        let schema = Schema::Object(
+            ObjectBuilder::new()
+                .schema_type(utoipa::openapi::SchemaType::String)
+                .build(),
+        );
 
-        Some(TypedSchema::new("Html".to_string(), ContentType::Html, RefOr::T(schema)))
+        Some(TypedSchema::new(
+            "Html".to_string(),
+            ContentType::Html,
+            RefOr::T(schema),
+        ))
     }
 }
 
@@ -173,7 +232,8 @@ impl DocResponse for axum::response::Redirect {}
 
 impl<R> DocResponse for (R,)
 where
-    R: DocResponse {
+    R: DocResponse,
+{
     fn doc_response() -> Option<TypedSchema> {
         R::doc_response()
     }
@@ -213,7 +273,8 @@ impl_doc_response!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, 
 
 impl<T, E> DocResponse for Result<T, E>
 where
-    T: DocResponse {
+    T: DocResponse,
+{
     fn doc_response() -> Option<TypedSchema> {
         T::doc_response()
     }
@@ -270,7 +331,7 @@ impl AppDocs {
                 let components = res.components.get_or_insert(Components::new());
                 components.schemas.extend(collected_schemas);
             }
-        };
+        }
 
         res
     }
@@ -289,9 +350,13 @@ impl PathDocs {
 
     /// Tries to add response metadata to a given method handler.
     /// Returns the same metadata as `Some()` variant if it fails to find the given method, `None` otherwise.
-    fn try_add_response_metadata(&mut self, method: PathItemType, metadata: ResponseMetadata) -> Option<ResponseMetadata> {
+    fn try_add_response_metadata(
+        &mut self,
+        method: PathItemType,
+        metadata: ResponseMetadata,
+    ) -> Option<ResponseMetadata> {
         let Some(handler) = self.0.get_mut(&method) else {
-            return Some(metadata)
+            return Some(metadata);
         };
 
         handler.response_metadata.push(metadata);
@@ -300,7 +365,7 @@ impl PathDocs {
 
     fn collect(self) -> Option<(PathItem, BTreeMap<String, RefOr<Schema>>)> {
         if self.0.is_empty() {
-            return None
+            return None;
         }
 
         let mut res = PathItemBuilder::new();
@@ -331,13 +396,13 @@ impl HandlerDocs {
             response_schema: None,
             response_metadata: Vec::new(),
         };
-        
+
         for elem in handler.extract_docs() {
             match elem {
                 RequestPart::Params(params) => res.params.extend(params),
                 RequestPart::Schema(typed_schema) => {
                     res.schema = Some(typed_schema);
-                },
+                }
             }
         }
 
@@ -352,30 +417,51 @@ impl HandlerDocs {
         if !self.params.is_empty() {
             res.parameters = Some(self.params);
         }
-        
-        res.request_body = self
-            .schema
-            .as_ref()
-            .map(|TypedSchema { name, content_type, schema: _ }| to_req_body(name, *content_type));
-        
+
+        res.request_body = self.schema.as_ref().map(
+            |TypedSchema {
+                 name,
+                 content_type,
+                 schema: _,
+             }| to_req_body(name, *content_type),
+        );
+
         let mut schemas = Vec::new();
-        schemas.extend(self.schema.map(|typed_schema| (typed_schema.name, typed_schema.schema)));
+        schemas.extend(
+            self.schema
+                .map(|typed_schema| (typed_schema.name, typed_schema.schema)),
+        );
 
         let mut responses_iter = self.response_metadata.into_iter();
-        
-        let first_metadata = responses_iter.next().unwrap_or(ResponseMetadata::default_success());
+
+        let first_metadata = responses_iter
+            .next()
+            .unwrap_or(ResponseMetadata::default_success());
         let first_response = match self.response_schema.as_ref() {
-            Some(TypedSchema { name, content_type, schema: _ }) => to_response(name, *content_type, first_metadata.description),
+            Some(TypedSchema {
+                name,
+                content_type,
+                schema: _,
+            }) => to_response(name, *content_type, first_metadata.description),
             None => Response::new(first_metadata.description),
         };
-        res.responses.responses.insert(first_metadata.status.as_u16().to_string(), RefOr::T(first_response));
+        res.responses.responses.insert(
+            first_metadata.status.as_u16().to_string(),
+            RefOr::T(first_response),
+        );
 
         for meta in responses_iter {
-            res.responses.responses.insert(meta.status.as_u16().to_string(), RefOr::T(Response::new(meta.description)));
+            res.responses.responses.insert(
+                meta.status.as_u16().to_string(),
+                RefOr::T(Response::new(meta.description)),
+            );
         }
-        
-        schemas.extend(self.response_schema.map(|typed_schema| (typed_schema.name, typed_schema.schema)));
-        
+
+        schemas.extend(
+            self.response_schema
+                .map(|typed_schema| (typed_schema.name, typed_schema.schema)),
+        );
+
         (res, schemas)
     }
 }
@@ -387,9 +473,16 @@ fn to_req_body(schema_name: impl Into<String>, content_type: ContentType) -> Req
     body
 }
 
-fn to_response(schema_name: impl Into<String>, content_type: ContentType, description: String) -> Response {
+fn to_response(
+    schema_name: impl Into<String>,
+    content_type: ContentType,
+    description: String,
+) -> Response {
     let content = Content::new(RefOr::Ref(Ref::from_schema_name(schema_name.into())));
-    ResponseBuilder::new().description(description).content(content_type.to_string(), content).build()
+    ResponseBuilder::new()
+        .description(description)
+        .content(content_type.to_string(), content)
+        .build()
 }
 
 pub struct DocRouter<S> {
@@ -399,8 +492,8 @@ pub struct DocRouter<S> {
 
 impl<S> Default for DocRouter<S>
 where
-    S: Clone + Send + Sync + 'static
- {
+    S: Clone + Send + Sync + 'static,
+{
     fn default() -> Self {
         Self::new()
     }
@@ -408,7 +501,8 @@ where
 
 impl<S> DocRouter<S>
 where
-    S: Clone + Send + Sync + 'static {
+    S: Clone + Send + Sync + 'static,
+{
     pub fn new() -> Self {
         Self {
             docs: AppDocs::new(),
@@ -428,8 +522,12 @@ where
 
     pub fn merge<R>(self, other: R) -> Self
     where
-        R: Into<DocRouter<S>> {
-        let DocRouter { docs: other_docs, router: other_router } = other.into();
+        R: Into<DocRouter<S>>,
+    {
+        let DocRouter {
+            docs: other_docs,
+            router: other_router,
+        } = other.into();
         let mut docs = self.docs;
         other_docs.paths.into_iter().for_each(|(uri, path_spec)| {
             docs.insert_path(uri, path_spec);
@@ -442,9 +540,12 @@ where
     }
 
     pub fn nest(self, path: &str, other: DocRouter<S>) -> Self {
-        let DocRouter { docs: other_docs, router: other_router } = other;
+        let DocRouter {
+            docs: other_docs,
+            router: other_router,
+        } = other;
         let mut docs = self.docs;
-        
+
         let doc_path = into_document_form(path);
         other_docs.paths.into_iter().for_each(|(uri, path_spec)| {
             docs.insert_path(format!("{doc_path}{uri}"), path_spec);
@@ -456,7 +557,11 @@ where
         }
     }
 
-    pub fn finish_doc(self, app_name: impl Into<String>, version: impl Into<String>) -> (Router<S>, OpenApi) {
+    pub fn finish_doc(
+        self,
+        app_name: impl Into<String>,
+        version: impl Into<String>,
+    ) -> (Router<S>, OpenApi) {
         let Self { router, docs } = self;
 
         (router, docs.to_openapi(app_name.into(), version.into()))
@@ -507,9 +612,11 @@ impl<S: Clone + Send + Sync + 'static> DocMethodRouter<S> {
     pub fn response(mut self, status: StatusCode, description: impl Into<String>) -> Self {
         let metadata = ResponseMetadata::new(status, description.into());
 
-        let res = self.docs.try_add_response_metadata(self.curr_method.clone(), metadata);
+        let res = self
+            .docs
+            .try_add_response_metadata(self.curr_method.clone(), metadata);
         debug_assert!(res.is_none());
-        
+
         self
     }
 
@@ -535,7 +642,10 @@ mod tests {
     #[rstest]
     #[case("/", "/")]
     #[case("/:user_id", "/{user_id}")]
-    #[case("/:transaction_id/books/:book_id/price", "/{transaction_id}/books/{book_id}/price")]
+    #[case(
+        "/:transaction_id/books/:book_id/price",
+        "/{transaction_id}/books/{book_id}/price"
+    )]
     #[case("/:/foo", "/{}/foo")]
     #[case("/foo/:", "/foo/{}")]
     #[case("/foo/:bar", "/foo/{bar}")]

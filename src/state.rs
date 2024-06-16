@@ -25,7 +25,6 @@ pub struct AppState {
     oauth: OAuthClients,
     domain_name: AbsoluteUri,
     jwt_keys: JwtKeys,
-    // verification: Verification,
     mailer: Mailer,
     environment: Environment,
 }
@@ -69,7 +68,9 @@ impl AppState {
             .unwrap();
 
         let mailer = Mailer::new(config.domain_name.to_string(), &config.smtp);
-        
+
+        trace!("Constructed app state");
+
         Self {
             db,
             redis,

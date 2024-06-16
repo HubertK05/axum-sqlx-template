@@ -40,8 +40,10 @@ impl GithubClient {
             .set_token_uri(token_url)
             .set_auth_type(AuthType::BasicAuth)
             .set_redirect_uri(
-                RedirectUrl::new(format!("http://{public_domain}/auth/oauth2/github/callback"))
-                    .expect("Invalid redirect URL"),
+                RedirectUrl::new(format!(
+                    "http://{public_domain}/auth/oauth2/github/callback"
+                ))
+                .expect("Invalid redirect URL"),
             );
 
         Self {

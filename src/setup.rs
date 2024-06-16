@@ -23,19 +23,4 @@ fn tracing_subscriber() {
         )
         .finish();
     tracing::subscriber::set_global_default(subscriber).unwrap();
-
-    // same but different
-    // tracing_subscriber::registry()
-    // .with(
-    //     tracing_subscriber::EnvFilter::try_from_default_env()
-    //     .unwrap_or(
-    //         format!("{pkg}=trace", pkg = env!("CARGO_PKG_NAME")) // reads directly from Cargo.toml definition, RUST_LOG env will convert "-" to "_"
-    //             .parse()
-    //             .unwrap(),
-    //     )
-    //     .add_directive("axum::rejection=trace".parse().unwrap()),
-    // )
-    // .with(tracing_subscriber::fmt::layer().pretty()
-    // .without_time())
-    // .init();
 }

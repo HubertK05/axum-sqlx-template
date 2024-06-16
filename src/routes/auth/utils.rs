@@ -1,5 +1,5 @@
 use crate::auth::{check_password_strength, hash_password};
-use crate::docutils::{DocRouter, get, post};
+use crate::docutils::{get, post, DocRouter};
 use crate::errors::AppError;
 use crate::mailer::Mailer;
 use crate::routes::auth::{
@@ -43,13 +43,7 @@ async fn setup_password_change(
     email: Address,
 ) -> crate::Result<()> {
     let token = Uuid::new_v4();
-    VerificationEntry::set(
-        &mut rds,
-        token,
-        email.to_string(),
-        PASSWORD_CHANGE_EXPIRY,
-    )
-    .await?;
+    VerificationEntry::set(&mut rds, token, email.to_string(), PASSWORD_CHANGE_EXPIRY).await?;
     mailer
         .send_password_change_request_mail(token, email, Some(PASSWORD_CHANGE_EXPIRY))
         .await
@@ -105,7 +99,10 @@ async fn try_change_password(
     Ok(())
 }
 
-async fn select_login_by_email(db: &PgPool, address: impl AsRef<str>) -> sqlx::Result<Option<String>> {
+async fn select_login_by_email(
+    db: &PgPool,
+    address: impl AsRef<str>,
+) -> sqlx::Result<Option<String>> {
     let login = query!(
         r#"
         SELECT login

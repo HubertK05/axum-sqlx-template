@@ -1,12 +1,12 @@
-use crate::auth::jwt::{Session};
+use crate::auth::jwt::Session;
 use crate::auth::oauth::{AuthProvider, OAuthClient, OAuthClients, OAuthUser};
 use crate::docutils::{get, DocRouter};
 use crate::errors::AppError;
 use crate::AsyncRedisConn;
+use axum::debug_handler;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, Redirect};
-use axum::{debug_handler};
 use axum_extra::extract::CookieJar;
 use oauth2::basic::BasicTokenResponse;
 use oauth2::{AuthorizationCode, CsrfToken, TokenResponse};
@@ -69,7 +69,7 @@ async fn read_oauth_response(
     oauth: OAuthClients,
     jar: CookieJar,
     jwt_keys: JwtKeys,
-    query: OAuthQuery
+    query: OAuthQuery,
 ) -> crate::Result<(CookieJar, Html<String>)> {
     // TODO: maybe handle logic inside CsrfState::check function
     let is_matching_state: bool = CsrfState::check(&mut rds, &query.state).await?;
@@ -82,7 +82,7 @@ async fn read_oauth_response(
     let github_user = oauth.github.get_user(github_token.access_token()).await?;
     let auth_provider = oauth.github.key();
     let github_user_id = github_user.subject_id();
-    
+
     let user_id = get_or_create_user(&db, &auth_provider, &github_user_id).await?;
     let jar = Session::set(&mut rds, jar, &jwt_keys, user_id).await?;
 

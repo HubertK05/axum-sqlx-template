@@ -9,8 +9,8 @@ use oauth2::basic::{
     BasicTokenResponse,
 };
 use oauth2::{
-    AccessToken, AuthorizationCode, CsrfToken, EndpointNotSet, EndpointSet, HttpClientError, RequestTokenError,
-    StandardRevocableToken,
+    AccessToken, AuthorizationCode, CsrfToken, EndpointNotSet, EndpointSet, HttpClientError,
+    RequestTokenError, StandardRevocableToken,
 };
 use redis::{RedisWrite, ToRedisArgs};
 use reqwest::{Client, Url};

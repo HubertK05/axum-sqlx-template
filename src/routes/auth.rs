@@ -11,7 +11,6 @@ mod utils;
 const VERIFICATION_EXPIRY: Duration = Duration::days(7);
 const PASSWORD_CHANGE_EXPIRY: Duration = Duration::minutes(5);
 
-
 pub fn router() -> DocRouter<AppState> {
     DocRouter::new()
         .nest("/oauth2", oauth::router())

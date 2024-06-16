@@ -1,6 +1,6 @@
 use crate::auth::oauth::AuthProvider;
-use anyhow::{bail};
-use axum::http::uri::{Scheme};
+use anyhow::bail;
+use axum::http::uri::Scheme;
 use axum::http::Uri;
 use config::{Config, ConfigError, File, FileFormat};
 use oauth2::{ClientId, ClientSecret};
@@ -217,10 +217,7 @@ impl AbsoluteUri {
     }
 
     fn uri(&self) -> String {
-        format!(
-            "http://{}",
-            self.0.authority().unwrap()
-        )
+        format!("http://{}", self.0.authority().unwrap())
     }
 
     fn domain(&self) -> String {
@@ -235,7 +232,7 @@ impl TryFrom<Uri> for AbsoluteUri {
         if let Some(scheme) = value.scheme_str() {
             match scheme {
                 "http" | "https" => (),
-                _ => bail!("invalid URI protocol, expected http or https")
+                _ => bail!("invalid URI protocol, expected http or https"),
             }
         }
         if value.host().is_none() {
@@ -297,9 +294,9 @@ impl<'de> Deserialize<'de> for AbsoluteUri {
 
 #[cfg(test)]
 mod tests {
+    use crate::config::{AbsoluteUri, AbsoluteUriVisitor};
     use serde::de::IntoDeserializer;
     use serde::Deserializer;
-    use crate::config::{AbsoluteUri, AbsoluteUriVisitor};
 
     #[test]
     fn absolute_path_with_custom_protocol() {
@@ -334,4 +331,3 @@ mod tests {
         assert!(v.is_ok())
     }
 }
-

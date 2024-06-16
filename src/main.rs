@@ -49,7 +49,6 @@ async fn main() {
     let addr = listener.local_addr().unwrap();
 
     let app_state = AppState::new(&config).await;
-    info!("Constructed app state");
     info!("Environment: {}", app_state.env());
 
     let router = routes::app(app_state);

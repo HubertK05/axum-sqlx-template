@@ -133,7 +133,8 @@ impl Session {
             .map_err(|_| AppError::exp(StatusCode::FORBIDDEN, "Session expired"))?;
 
         if TokenFamily::is_valid_refresh_token(rds, claims).await? {
-            let token_pair = continue_token_family(rds, jwt_keys, claims.new_refresh_member()).await?;
+            let token_pair =
+                continue_token_family(rds, jwt_keys, claims.new_refresh_member()).await?;
             Ok(token_pair.add_cookies(jar))
         } else {
             TokenFamily::invalidate(rds, claims.family).await?;
@@ -273,7 +274,7 @@ where
                 "Authentication required",
             ));
         };
-        
+
         let claims = decode_jwt(cookie.value(), jwt_keys.decoding_access()).inspect_err(|e| {
             match e.kind() {
                 ErrorKind::InvalidToken => {}     // not a valid JWT
@@ -289,7 +290,7 @@ where
             _ => Err(AppError::exp(
                 StatusCode::FORBIDDEN,
                 "Authentication required",
-            ))
+            )),
         }
     }
 }

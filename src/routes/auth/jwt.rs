@@ -1,14 +1,16 @@
 use anyhow::Context;
-use axum::extract::{State};
+use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::{Html};
+use axum::response::Html;
 use axum::{debug_handler, Json};
 use axum_extra::extract::CookieJar;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::auth::jwt::{invalidate, Claims, Session};
-use crate::auth::{hash_password, is_correct_password, LoginForm, PasswordStrength, RegistrationForm};
+use crate::auth::{
+    hash_password, is_correct_password, LoginForm, PasswordStrength, RegistrationForm,
+};
 use crate::docutils::{get, post, DocRouter};
 use crate::errors::DbErrMap;
 use crate::mailer::Mailer;
@@ -43,7 +45,7 @@ async fn try_register(
     mailer: Mailer,
     jar: CookieJar,
     jwt_keys: JwtKeys,
-    body: RegistrationForm
+    body: RegistrationForm,
 ) -> crate::Result<CookieJar> {
     // TODO: check for session
     body.check_password_strength()?;
@@ -62,7 +64,12 @@ async fn try_register(
     Session::set(&mut rds, jar, &jwt_keys, user_id).await
 }
 
-async fn insert_user_unverified(db: &PgPool, login: impl AsRef<str>, password_hash: impl AsRef<str>, email: impl AsRef<str>) -> crate::Result<Uuid> {
+async fn insert_user_unverified(
+    db: &PgPool,
+    login: impl AsRef<str>,
+    password_hash: impl AsRef<str>,
+    email: impl AsRef<str>,
+) -> crate::Result<Uuid> {
     let user_id = query!(
         r#"
         INSERT INTO users (login, password, email, verified)
@@ -101,7 +108,7 @@ async fn try_login(
     mut rds: impl AsyncRedisConn,
     jwt_keys: JwtKeys,
     jar: CookieJar,
-    body: LoginForm
+    body: LoginForm,
 ) -> crate::Result<CookieJar> {
     // TODO: check for session
 
@@ -109,7 +116,7 @@ async fn try_login(
 
     if let Some(password_hash) = password_hash {
         if is_correct_password(body.password, password_hash) {
-            return Session::set(&mut rds, jar, &jwt_keys, user_id).await
+            return Session::set(&mut rds, jar, &jwt_keys, user_id).await;
         }
         // here it is possible to return exact error but this information is helpful for both users and hackers
     }
@@ -121,7 +128,10 @@ async fn try_login(
     )) // precise cause of error is hidden from the end user
 }
 
-async fn select_user_by_login(db: &PgPool, login: impl AsRef<str>) -> crate::Result<(Uuid, Option<String>)> {
+async fn select_user_by_login(
+    db: &PgPool,
+    login: impl AsRef<str>,
+) -> crate::Result<(Uuid, Option<String>)> {
     let (user_id, password_hash) = query!(
         r#"
     SELECT id, password FROM users
@@ -131,7 +141,10 @@ async fn select_user_by_login(db: &PgPool, login: impl AsRef<str>) -> crate::Res
     )
     .fetch_optional(db)
     .await?
-    .ok_or(AppError::exp(StatusCode::FORBIDDEN, "Invalid login credentials"))
+    .ok_or(AppError::exp(
+        StatusCode::FORBIDDEN,
+        "Invalid login credentials",
+    ))
     .map(|r| (r.id, r.password))?;
 
     Ok((user_id, password_hash))
@@ -146,7 +159,10 @@ async fn refresh_session(
     Session::refresh(&mut rds, jar, &jwt_keys).await
 }
 
-async fn logout(claims: Claims, State(mut rds): State<RdPool>) -> crate::Result<Html<&'static str>> {
+async fn logout(
+    claims: Claims,
+    State(mut rds): State<RdPool>,
+) -> crate::Result<Html<&'static str>> {
     invalidate(&mut rds, claims.family).await?;
     Ok(Html("Successfully logged out"))
 }
