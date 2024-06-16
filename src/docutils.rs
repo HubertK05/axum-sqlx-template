@@ -5,9 +5,25 @@ use regex::Regex;
 use utoipa::{openapi::{path::{Operation, Parameter, ParameterIn, PathItemBuilder}, request_body::RequestBody, Components, Content, Info, ObjectBuilder, OpenApi, PathItem, PathItemType, Paths, Ref, RefOr, Response, ResponseBuilder, Schema}, IntoParams, ToSchema};
 use axum::http::StatusCode;
 
+pub struct TypedSchema {
+    name: String,
+    content_type: ContentType,
+    schema: RefOr<Schema>,
+}
+
+impl TypedSchema {
+    fn new(name: String, content_type: ContentType, schema: RefOr<Schema>) -> Self {
+        Self {
+            name,
+            content_type,
+            schema,
+        }
+    }
+}
+
 pub trait DocHandler<T, S> {
     fn extract_docs(&self) -> Vec<RequestPart>;
-    fn response_docs(&self) -> Option<(String, ContentType, RefOr<Schema>)>;
+    fn response_docs(&self) -> Option<TypedSchema>;
 }
 
 impl<F, S, Fut, R> DocHandler<((), ), S> for F
@@ -19,7 +35,7 @@ where
         vec![]
     }
 
-    fn response_docs(&self) -> Option<(String, ContentType, RefOr<Schema>)> {
+    fn response_docs(&self) -> Option<TypedSchema> {
         R::doc_response()
     }
 }
@@ -44,7 +60,7 @@ macro_rules! impl_doc_handler {
                 res
             }
 
-            fn response_docs(&self) -> Option<(String, ContentType, RefOr<Schema>)> {
+            fn response_docs(&self) -> Option<TypedSchema> {
                 R::doc_response()
             }
         }
@@ -122,7 +138,7 @@ impl<'a, T> DocExtractor for Json<T>
 where T: ToSchema<'a> {
     fn doc_extractor() -> Option<RequestPart> {
         let (name, schema) = T::schema();
-        Some(RequestPart::Schema(name.to_string(), ContentType::Json, schema))
+        Some(RequestPart::Schema(TypedSchema::new(name.to_string(), ContentType::Json, schema)))
     }
 }
 
@@ -130,24 +146,24 @@ impl DocExtractor for axum_extra::extract::cookie::CookieJar {}
 impl<T> DocExtractor for axum::extract::State<T> {}
 
 pub trait DocResponse {
-    fn doc_response() -> Option<(String, ContentType, RefOr<Schema>)> {
+    fn doc_response() -> Option<TypedSchema> {
         None
     }
 }
 
 impl<'a, T> DocResponse for Json<T>
 where T: ToSchema<'a> {
-    fn doc_response() -> Option<(String, ContentType, RefOr<Schema>)> {
+    fn doc_response() -> Option<TypedSchema> {
         let (name, schema) = T::schema();
-        Some((name.to_string(), ContentType::Json, schema))
+        Some(TypedSchema::new(name.to_string(), ContentType::Json, schema))
     }
 }
 
 impl<T> DocResponse for Html<T> {
-    fn doc_response() -> Option<(String, ContentType, RefOr<Schema>)> {
+    fn doc_response() -> Option<TypedSchema> {
         let schema = Schema::Object(ObjectBuilder::new().schema_type(utoipa::openapi::SchemaType::String).build());
 
-        Some(("Html".to_string(), ContentType::Html, RefOr::T(schema)))
+        Some(TypedSchema::new("Html".to_string(), ContentType::Html, RefOr::T(schema)))
     }
 }
 
@@ -158,7 +174,7 @@ impl DocResponse for axum::response::Redirect {}
 impl<R> DocResponse for (R,)
 where
     R: DocResponse {
-    fn doc_response() -> Option<(String, ContentType, RefOr<Schema>)> {
+    fn doc_response() -> Option<TypedSchema> {
         R::doc_response()
     }
 }
@@ -171,7 +187,7 @@ macro_rules! impl_doc_response {
                 $ty: IntoResponseParts,
             )*
             R: IntoResponse + DocResponse {
-            fn doc_response() -> Option<(String, ContentType, RefOr<Schema>)> {
+            fn doc_response() -> Option<TypedSchema> {
                 R::doc_response()
             }
         }
@@ -198,7 +214,7 @@ impl_doc_response!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, 
 impl<T, E> DocResponse for Result<T, E>
 where
     T: DocResponse {
-    fn doc_response() -> Option<(String, ContentType, RefOr<Schema>)> {
+    fn doc_response() -> Option<TypedSchema> {
         T::doc_response()
     }
 }
@@ -222,7 +238,7 @@ impl Display for ContentType {
 
 pub enum RequestPart {
     Params(Vec<Parameter>),
-    Schema(String, ContentType, RefOr<Schema>),
+    Schema(TypedSchema),
 }
 
 struct AppDocs {
@@ -302,8 +318,8 @@ impl PathDocs {
 
 struct HandlerDocs {
     params: Vec<Parameter>,
-    schema: Option<(String, ContentType, RefOr<Schema>)>,
-    response_schema: Option<(String, ContentType, RefOr<Schema>)>,
+    schema: Option<TypedSchema>,
+    response_schema: Option<TypedSchema>,
     response_metadata: Vec<ResponseMetadata>,
 }
 
@@ -319,8 +335,8 @@ impl HandlerDocs {
         for elem in handler.extract_docs() {
             match elem {
                 RequestPart::Params(params) => res.params.extend(params),
-                RequestPart::Schema(name, content_type, schema) => {
-                    res.schema = Some((name, content_type, schema));
+                RequestPart::Schema(typed_schema) => {
+                    res.schema = Some(typed_schema);
                 },
             }
         }
@@ -340,10 +356,10 @@ impl HandlerDocs {
         res.request_body = self
             .schema
             .as_ref()
-            .map(|(name, content_type, _)| to_req_body(name, *content_type));
+            .map(|TypedSchema { name, content_type, schema: _ }| to_req_body(name, *content_type));
         
         let mut schemas = Vec::new();
-        schemas.extend(self.schema.map(|x| (x.0, x.2)));
+        schemas.extend(self.schema.map(|typed_schema| (typed_schema.name, typed_schema.schema)));
         
         if self.response_metadata.is_empty() && self.response_schema.is_none() {
             return (res, schemas)
@@ -354,7 +370,7 @@ impl HandlerDocs {
         let first_metadata = self.response_metadata.pop().unwrap_or(ResponseMetadata::default_success());
 
         let first_response = match self.response_schema.as_ref() {
-            Some((schema_name, content_type, _)) => to_response(schema_name, *content_type, first_metadata.description),
+            Some(TypedSchema { name, content_type, schema: _ }) => to_response(name, *content_type, first_metadata.description),
             None => Response::new(first_metadata.description),
         };
         
@@ -363,7 +379,7 @@ impl HandlerDocs {
             res.responses.responses.insert(meta.status.as_u16().to_string(), RefOr::T(Response::new(meta.description)));
         }
         
-        schemas.extend(self.response_schema.map(|x| (x.0, x.2)));
+        schemas.extend(self.response_schema.map(|typed_schema| (typed_schema.name, typed_schema.schema)));
         
         (res, schemas)
     }
