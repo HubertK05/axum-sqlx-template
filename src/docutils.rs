@@ -346,7 +346,7 @@ impl HandlerDocs {
         res
     }
 
-    fn collect(mut self) -> (Operation, Vec<(String, RefOr<Schema>)>) {
+    fn collect(self) -> (Operation, Vec<(String, RefOr<Schema>)>) {
         let mut res = Operation::new();
 
         if !self.params.is_empty() {
@@ -360,22 +360,17 @@ impl HandlerDocs {
         
         let mut schemas = Vec::new();
         schemas.extend(self.schema.map(|typed_schema| (typed_schema.name, typed_schema.schema)));
-        
-        if self.response_metadata.is_empty() && self.response_schema.is_none() {
-            return (res, schemas)
-        };
-        
-        self.response_metadata.reverse();
-        
-        let first_metadata = self.response_metadata.pop().unwrap_or(ResponseMetadata::default_success());
 
+        let mut responses_iter = self.response_metadata.into_iter();
+        
+        let first_metadata = responses_iter.next().unwrap_or(ResponseMetadata::default_success());
         let first_response = match self.response_schema.as_ref() {
             Some(TypedSchema { name, content_type, schema: _ }) => to_response(name, *content_type, first_metadata.description),
             None => Response::new(first_metadata.description),
         };
-        
         res.responses.responses.insert(first_metadata.status.as_u16().to_string(), RefOr::T(first_response));
-        while let Some(meta) = self.response_metadata.pop() {
+
+        for meta in responses_iter {
             res.responses.responses.insert(meta.status.as_u16().to_string(), RefOr::T(Response::new(meta.description)));
         }
         
