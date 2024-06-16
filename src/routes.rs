@@ -1,13 +1,12 @@
 mod auth;
 
-use crate::{docutils::{get, DocRouter}, errors::AppError, state::AppState
+use crate::{docutils::{get, DocRouter}, errors::AppError, state::{AppState, RdPool}, AsyncRedisConn
 };
 use axum::{
-    body::Body,
-    extract::ConnectInfo, http::{Request, Response, Uri}, response::{Html, Redirect},
-    Router,
+    body::Body, debug_handler, extract::{ConnectInfo, Request, State}, http::{Response, Uri}, middleware::{self, Next}, response::{Html, IntoResponse, Redirect}, Router
 };
 use axum::http::StatusCode;
+use redis::AsyncCommands;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
 use utoipa::openapi::OpenApi;
@@ -27,6 +26,7 @@ pub fn app(app_state: AppState) -> Router {
     };
 
     documented_router
+        .layer(middleware::from_fn_with_state(app_state.clone(), increment_visit_count))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<Body>| {
@@ -53,6 +53,24 @@ async fn not_found(
     let msg = format!("Endpoint not found: {uri}");
     debug!("IP: {}", addr.ip());
     Err(AppError::exp(StatusCode::NOT_FOUND, msg))
+}
+
+async fn increment_visit_count(State(mut rds): State<RdPool>, req: Request, next: Next) -> crate::Result<impl IntoResponse> {
+    EndpointVisits::increment(&mut rds, req.uri().path()).await?;
+    
+    Ok(next.run(req).await)
+}
+
+struct EndpointVisits;
+
+impl EndpointVisits {
+    async fn increment(rds: &mut impl AsyncRedisConn, endpoint: impl AsRef<str>) -> crate::Result<()> {
+        Ok(rds.incr(Self::key(endpoint.as_ref()), 1).await?)
+    }
+
+    fn key(endpoint: &str) -> String {
+        format!("endpoint:{endpoint}:visits")
+    }
 }
 
 fn add_swagger<S>(router: Router<S>, docs: OpenApi) -> Router<S>
