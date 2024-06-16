@@ -6,7 +6,7 @@ use axum::{
     body::Body, debug_handler, extract::{ConnectInfo, Request, State}, http::{Response, Uri}, middleware::{self, Next}, response::{Html, IntoResponse, Redirect}, Router
 };
 use axum::http::StatusCode;
-use redis::AsyncCommands;
+use redis::RedisResult;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
 use utoipa::openapi::OpenApi;
@@ -55,17 +55,21 @@ async fn not_found(
     Err(AppError::exp(StatusCode::NOT_FOUND, msg))
 }
 
-async fn increment_visit_count(State(mut rds): State<RdPool>, req: Request, next: Next) -> crate::Result<impl IntoResponse> {
-    EndpointVisits::increment(&mut rds, req.uri().path()).await?;
-    
+async fn increment_visit_count(State(rds): State<RdPool>, req: Request, next: Next) -> crate::Result<impl IntoResponse> {
+    let path = req.uri().path().to_string();
+    let _ = tokio::spawn(async move {
+        let mut rds = rds;
+        EndpointVisits::increment(&mut rds, path).await.unwrap();
+    });
+
     Ok(next.run(req).await)
 }
 
 struct EndpointVisits;
 
 impl EndpointVisits {
-    async fn increment(rds: &mut impl AsyncRedisConn, endpoint: impl AsRef<str>) -> crate::Result<()> {
-        Ok(rds.incr(Self::key(endpoint.as_ref()), 1).await?)
+    async fn increment(rds: &mut impl AsyncRedisConn, endpoint: impl AsRef<str>) -> RedisResult<()>{
+        rds.incr(Self::key(endpoint.as_ref()), 1).await
     }
 
     fn key(endpoint: &str) -> String {
