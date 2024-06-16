@@ -41,7 +41,7 @@ pub fn app(app_state: AppState) -> Router {
         .with_state(app_state)
 }
 
-async fn home_page() -> Result<Html<&'static str>, AppError> {
+async fn home_page() -> crate::Result<Html<&'static str>> {
     trace!("Welcome to the API home page!");
     Ok(Html("<h1>API home page</h1>"))
 }
@@ -49,7 +49,7 @@ async fn home_page() -> Result<Html<&'static str>, AppError> {
 async fn not_found(
     uri: Uri,
     ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
-) -> Result<Redirect, AppError> {
+) -> crate::Result<Redirect> {
     let msg = format!("Endpoint not found: {uri}");
     debug!("IP: {}", addr.ip());
     Err(AppError::exp(StatusCode::NOT_FOUND, msg))

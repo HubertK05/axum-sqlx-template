@@ -44,7 +44,7 @@ async fn try_register(
     jar: CookieJar,
     jwt_keys: JwtKeys,
     body: RegistrationForm
-) -> Result<CookieJar, AppError> {
+) -> crate::Result<CookieJar> {
     // TODO: check for session
     body.check_password_strength()?;
 
@@ -102,7 +102,7 @@ async fn try_login(
     jwt_keys: JwtKeys,
     jar: CookieJar,
     body: LoginForm
-) -> Result<CookieJar, AppError> {
+) -> crate::Result<CookieJar> {
     // TODO: check for session
 
     let (user_id, password_hash) = select_user_by_login(&db, &body.login).await?;
@@ -113,6 +113,8 @@ async fn try_login(
         }
         // here it is possible to return exact error but this information is helpful for both users and hackers
     }
+
+    // TODO: consider adding some sort of enum variants to errors to avoid mistakes when altering messages
     Err(AppError::exp(
         StatusCode::FORBIDDEN,
         "Invalid login credentials",
@@ -129,7 +131,7 @@ async fn select_user_by_login(db: &PgPool, login: impl AsRef<str>) -> crate::Res
     )
     .fetch_optional(db)
     .await?
-    .ok_or(AppError::exp(StatusCode::FORBIDDEN, "Invalid credentials"))
+    .ok_or(AppError::exp(StatusCode::FORBIDDEN, "Invalid login credentials"))
     .map(|r| (r.id, r.password))?;
 
     Ok((user_id, password_hash))

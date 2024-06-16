@@ -19,7 +19,7 @@ pub fn router() -> DocRouter<AppState> {
         .merge(utils::router())
 }
 
-pub async fn verify_account(db: &PgPool, user_id: Uuid) -> Result<(), AppError> {
+pub async fn verify_account(db: &PgPool, user_id: Uuid) -> crate::Result<()> {
     query!(
         r#"
             UPDATE users
@@ -38,7 +38,7 @@ pub async fn update_password_by_email(
     db: &PgPool,
     email: String,
     new_password_hash: String,
-) -> Result<(), AppError> {
+) -> crate::Result<()> {
     query!(
         r#"
             UPDATE users
@@ -62,7 +62,7 @@ impl VerificationEntry {
         token: Uuid,
         value: T,
         expiry: Duration,
-    ) -> Result<(), AppError> {
+    ) -> crate::Result<()> {
         Ok(rds
             .set_ex(Self::key(token), value, expiry.whole_seconds() as u64)
             .await?)

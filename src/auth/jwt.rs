@@ -11,7 +11,7 @@ use axum::{async_trait, RequestPartsExt};
 use axum_extra::extract::CookieJar;
 use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use redis::{RedisResult};
+use redis::RedisResult;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use uuid::Uuid;
@@ -108,7 +108,7 @@ impl Session {
         jar: CookieJar,
         jwt_keys: &JwtKeys,
         user_id: Uuid,
-    ) -> Result<CookieJar, AppError> {
+    ) -> crate::Result<CookieJar> {
         let refresh_claims = Claims::family_root(user_id);
         let token_pair = register_tokens(rds, jwt_keys, refresh_claims).await?;
         Ok(token_pair.add_cookies(jar))
@@ -123,7 +123,7 @@ impl Session {
         rds: &mut impl AsyncRedisConn,
         jar: CookieJar,
         jwt_keys: &JwtKeys,
-    ) -> Result<CookieJar, AppError> {
+    ) -> crate::Result<CookieJar> {
         let Some(cookie) = jar.get(JWT_REFRESH_COOKIE_NAME) else {
             return Err(AppError::exp(StatusCode::FORBIDDEN, "Session expired"));
         };
@@ -149,7 +149,7 @@ pub async fn init_token_family(
     rds: &mut impl AsyncRedisConn,
     jwt_secrets: &JwtKeys,
     user_id: Uuid,
-) -> Result<TokenPair, AppError> {
+) -> crate::Result<TokenPair> {
     let refresh_claims = Claims::family_root(user_id);
     register_tokens(rds, jwt_secrets, refresh_claims).await
 }
@@ -158,7 +158,7 @@ async fn continue_token_family(
     rds: &mut impl AsyncRedisConn,
     jwt_secrets: &JwtKeys,
     refresh_claims: Claims,
-) -> Result<TokenPair, AppError> {
+) -> crate::Result<TokenPair> {
     let new_refresh_claims = refresh_claims.new_refresh_member();
     register_tokens(rds, jwt_secrets, new_refresh_claims).await
 }
@@ -167,7 +167,7 @@ async fn register_tokens(
     rds: &mut impl AsyncRedisConn,
     jwt_keys: &JwtKeys,
     refresh_claims: Claims,
-) -> Result<TokenPair, AppError> {
+) -> crate::Result<TokenPair> {
     let refresh_token = encode_jwt(refresh_claims, jwt_keys.encoding_refresh())
         .context("Failed to encode refresh JWT")?;
 
@@ -187,7 +187,7 @@ pub async fn refresh_jwt_session<'c>(
     rds: &mut impl AsyncRedisConn,
     jar: CookieJar,
     jwt_keys: JwtKeys,
-) -> Result<CookieJar, AppError> {
+) -> crate::Result<CookieJar> {
     let Some(cookie) = jar.get(JWT_REFRESH_COOKIE_NAME) else {
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Session expired"));
     };
