@@ -2,9 +2,7 @@ use crate::auth::{check_password_strength, hash_password};
 use crate::docutils::{get, post, DocRouter};
 use crate::errors::AppError;
 use crate::mailer::Mailer;
-use crate::routes::auth::{
-    update_password_by_email, verify_account, VerificationEntry, PASSWORD_CHANGE_EXPIRY,
-};
+use crate::routes::auth::{VerificationEntry, PASSWORD_CHANGE_EXPIRY, User};
 use crate::state::{AppState, RdPool};
 use crate::AsyncRedisConn;
 use anyhow::Context;
@@ -82,41 +80,22 @@ async fn try_change_password(
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Access denied"));
     };
 
-    let login = select_login_by_email(&db, &target_address).await?;
+    let login = User::select_login_by_email(&db, &target_address).await?;
 
     let mut inputs = vec![target_address.as_ref()];
     inputs.extend(login.as_deref());
 
     check_password_strength(&password, inputs.as_slice())?;
 
-    // TODO consider converting to Address
-    // let email = Address::try_from(target_address).unwrap();
     VerificationEntry::delete(&mut rds, token).await?;
     let hashed_password = hash_password(password);
 
-    update_password_by_email(&db, target_address, hashed_password).await?;
+    User::update_password_by_email(&db, target_address, hashed_password).await?;
 
     Ok(())
 }
 
-async fn select_login_by_email(
-    db: &PgPool,
-    address: impl AsRef<str>,
-) -> sqlx::Result<Option<String>> {
-    let login = query!(
-        r#"
-        SELECT login
-        FROM users
-        WHERE email = $1
-        "#,
-        address.as_ref()
-    )
-    .fetch_one(db)
-    .await?
-    .login;
 
-    Ok(login)
-}
 
 #[derive(Deserialize, IntoParams)]
 struct VerificationToken {
@@ -136,11 +115,11 @@ async fn try_verify_address(
     mut rds: impl AsyncRedisConn,
     token: Uuid,
 ) -> crate::Result<()> {
-    let Some(user_id) = VerificationEntry::get(&mut rds, token).await? else {
+    let Some(user_id): Option<Uuid> = VerificationEntry::get(&mut rds, token).await? else {
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Invalid token"));
     };
 
-    verify_account(&db, user_id).await?;
+    User::verify(&db, &user_id).await?;
     VerificationEntry::delete(&mut rds, token).await?;
 
     Ok(())

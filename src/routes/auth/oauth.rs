@@ -2,6 +2,7 @@ use crate::auth::jwt::Session;
 use crate::auth::oauth::{AuthProvider, OAuthClient, OAuthClients, OAuthUser};
 use crate::docutils::{get, DocRouter};
 use crate::errors::AppError;
+use crate::routes::auth::User;
 use crate::AsyncRedisConn;
 use axum::debug_handler;
 use axum::extract::{Query, State};
@@ -110,7 +111,7 @@ async fn get_or_create_user(
     subject_id: &str,
 ) -> sqlx::Result<Uuid> {
     let res = if let Some(user_id) =
-        select_user_id_from_federated_credentials(db, &auth_provider, subject_id).await?
+        FederatedCredential::select_user_id(db, &auth_provider, subject_id).await?
     {
         trace!("Authenticating {user_id} with {auth_provider}");
         user_id
@@ -123,71 +124,56 @@ async fn get_or_create_user(
 
     Ok(res)
 }
+struct FederatedCredential;
 
-async fn create_user_with_federated_credentials(
-    db: &PgPool,
-    auth_provider: &AuthProvider,
-    subject_id: &str,
-) -> sqlx::Result<Uuid> {
-    let mut tx = db.begin().await?;
-    let user_id = insert_into_users(&mut *tx, None).await?;
-    insert_into_federated_credentials(&mut *tx, &user_id, auth_provider, subject_id).await?;
-    tx.commit().await?;
-    Ok(user_id)
-}
-
-async fn select_user_id_from_federated_credentials(
-    db: impl PgExecutor<'_>,
-    provider: &AuthProvider,
-    subject_id: &str,
-) -> sqlx::Result<Option<Uuid>> {
-    Ok(query!(
-        r#"
+impl FederatedCredential {
+    pub async fn insert(
+        db: impl PgExecutor<'_>,
+        user_id: impl AsRef<Uuid>,
+        auth_provider: &AuthProvider,
+        subject_id: impl AsRef<str>,
+    ) -> sqlx::Result<()> {
+        query!(
+            r#"
+    INSERT INTO federated_credentials (user_id, provider, subject_id)
+    VALUES ($1, $2, $3)
+    "#,
+            user_id.as_ref(),
+            auth_provider as _,
+            subject_id.as_ref()
+        )
+        .execute(db)
+        .await?;
+        Ok(())
+    }
+    pub async fn select_user_id(
+        db: impl PgExecutor<'_>,
+        provider: &AuthProvider,
+        subject_id: &str,
+    ) -> sqlx::Result<Option<Uuid>> {
+        Ok(query!(
+            r#"
     SELECT user_id
     FROM federated_credentials
     WHERE provider = $1 AND subject_id = $2
     "#,
-        provider as _,
-        subject_id
-    )
-    .fetch_optional(db)
-    .await?
-    .map(|r| r.user_id))
+            provider as _,
+            subject_id
+        )
+        .fetch_optional(db)
+        .await?
+        .map(|r| r.user_id))
+    }
 }
 
-async fn insert_into_federated_credentials(
-    db: impl PgExecutor<'_>,
-    user_id: &Uuid,
-    provider: &AuthProvider,
-    subject_id: &str,
-) -> sqlx::Result<()> {
-    query!(
-        r#"
-    INSERT INTO federated_credentials (user_id, provider, subject_id)
-    VALUES ($1, $2, $3)
-    "#,
-        user_id,
-        provider as _,
-        subject_id
-    )
-    .execute(db)
-    .await?;
-    Ok(())
-}
-
-async fn insert_into_users(
-    db: impl PgExecutor<'_>,
-    password: Option<String>,
+async fn create_user_with_federated_credentials(
+    db: &PgPool,
+    auth_provider: &AuthProvider,
+    subject_id: impl AsRef<str>,
 ) -> sqlx::Result<Uuid> {
-    Ok(query!(
-        r#"
-    INSERT INTO users (password, verified)
-    VALUES ($1, true)
-    RETURNING id
-    "#,
-        password
-    )
-    .fetch_one(db)
-    .await?
-    .id)
+    let mut tx = db.begin().await?;
+    let user_id = User::insert(&mut *tx, None).await?;
+    FederatedCredential::insert(&mut *tx, &user_id, auth_provider, subject_id).await?;
+    tx.commit().await?;
+    Ok(user_id)
 }
