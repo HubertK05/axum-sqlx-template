@@ -38,3 +38,5 @@ zxcvbn = "3.0.1"
 
 [dev-dependencies]
 rstest = "0.21.0"
+testcontainers = { version = "0.18.0", features = ["properties-config"] }
+testcontainers-modules = { version = "0.6.1", features = ["redis"] }
