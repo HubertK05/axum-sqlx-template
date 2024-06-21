@@ -1,5 +1,6 @@
 mod auth;
 
+use std::collections::HashMap;
 use crate::{
     docutils::{get, DocRouter},
     errors::AppError,
@@ -74,8 +75,9 @@ async fn increment_visit_count(
     let _ = tokio::spawn(async move {
         let mut rds = rds;
         EndpointVisits::increment(&mut rds, path).await.unwrap();
+        let map  = EndpointVisits::get_all(&mut rds).await.unwrap();
+        dbg!(map)
     });
-
     Ok(next.run(req).await)
 }
 
@@ -89,6 +91,16 @@ impl EndpointVisits {
         rds.incr(Self::key(endpoint.as_ref()), 1).await
     }
 
+    async fn get_all(rds: &mut impl AsyncRedisConn) -> RedisResult<HashMap<String, i32>> {
+        let keys: Vec<String> = rds.keys("endpoint:*").await?;
+        let mut map = HashMap::new();
+        for key in keys {
+           let value: i32 = rds.get(&key).await?; 
+            map.insert(key[9..].to_string(), value);
+        } 
+        Ok(map)     
+    }
+    
     fn key(endpoint: &str) -> String {
         format!("endpoint:{endpoint}:visits")
     }
