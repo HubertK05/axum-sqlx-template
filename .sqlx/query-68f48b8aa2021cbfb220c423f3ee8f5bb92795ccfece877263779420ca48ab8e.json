@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    INSERT INTO federated_credentials (user_id, provider, subject_id)\n    VALUES ($1, $2, $3)\n    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "credential_provider",
+            "kind": {
+              "Enum": [
+                "github"
+              ]
+            }
+          }
+        },
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "68f48b8aa2021cbfb220c423f3ee8f5bb92795ccfece877263779420ca48ab8e"
+}

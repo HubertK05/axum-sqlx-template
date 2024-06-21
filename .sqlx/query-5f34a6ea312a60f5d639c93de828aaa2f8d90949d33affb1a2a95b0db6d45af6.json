@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    SELECT user_id\n    FROM federated_credentials\n    WHERE provider = $1 AND subject_id = $2\n    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "credential_provider",
+            "kind": {
+              "Enum": [
+                "github"
+              ]
+            }
+          }
+        },
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5f34a6ea312a60f5d639c93de828aaa2f8d90949d33affb1a2a95b0db6d45af6"
+}
