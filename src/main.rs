@@ -29,9 +29,9 @@ pub extern crate sqlx;
 pub type Result<T, E = errors::AppError> = std::result::Result<T, E>;
 pub type AppRouter = Router<AppState>;
 
-pub trait AsyncRedisConn: ConnectionLike + Send + AsyncCommands {}
+pub trait AsyncRedisConn: ConnectionLike + Send + Clone + AsyncCommands {}
 
-impl<T> AsyncRedisConn for T where T: ConnectionLike + Send + AsyncCommands {}
+impl<T> AsyncRedisConn for T where T: ConnectionLike + Send + Clone + AsyncCommands {}
 
 #[tokio::main]
 async fn main() {

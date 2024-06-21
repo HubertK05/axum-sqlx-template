@@ -1,6 +1,5 @@
 mod auth;
 
-use std::collections::HashMap;
 use crate::{
     docutils::{get, DocRouter},
     errors::AppError,
@@ -17,8 +16,10 @@ use axum::{
     response::{Html, IntoResponse, Redirect},
     Router,
 };
-use redis::RedisResult;
+use redis::{AsyncCommands, RedisResult};
+use std::collections::HashMap;
 use std::time::Duration;
+use tokio::task::JoinSet;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
 use utoipa::openapi::OpenApi;
@@ -75,7 +76,7 @@ async fn increment_visit_count(
     let _ = tokio::spawn(async move {
         let mut rds = rds;
         EndpointVisits::increment(&mut rds, path).await.unwrap();
-        let map  = EndpointVisits::get_all(&mut rds).await.unwrap();
+        let map = EndpointVisits::get_all(&mut rds).await.unwrap();
         dbg!(map)
     });
     Ok(next.run(req).await)
@@ -91,16 +92,25 @@ impl EndpointVisits {
         rds.incr(Self::key(endpoint.as_ref()), 1).await
     }
 
-    async fn get_all(rds: &mut impl AsyncRedisConn) -> RedisResult<HashMap<String, i32>> {
+    async fn get_all(rds: &mut RdPool) -> RedisResult<HashMap<String, i32>> {
         let keys: Vec<String> = rds.keys("endpoint:*").await?;
-        let mut map = HashMap::new();
+        let mut tasks: JoinSet<(String, RedisResult<i32>)> = JoinSet::new();
         for key in keys {
-           let value: i32 = rds.get(&key).await?; 
-            map.insert(key[9..].to_string(), value);
-        } 
-        Ok(map)     
+            let mut task_rds = rds.clone();
+            tasks.spawn(async move {
+                let value = task_rds.get(&key).await;
+                (key, value)
+            });
+        }
+
+        let mut map = HashMap::new();
+        while let Some(Ok((key, value))) = tasks.join_next().await {
+            let value = value?;
+            map.insert(key, value);
+        }
+        Ok(map)
     }
-    
+
     fn key(endpoint: &str) -> String {
         format!("endpoint:{endpoint}:visits")
     }
