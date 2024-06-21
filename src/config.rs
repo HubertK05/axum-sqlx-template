@@ -220,7 +220,7 @@ impl AbsoluteUri {
         format!("http://{}", self.0.authority().unwrap())
     }
 
-    fn domain(&self) -> String {
+    pub fn domain(&self) -> String {
         self.0.host().unwrap().to_string()
     }
 }
