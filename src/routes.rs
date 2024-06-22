@@ -18,7 +18,6 @@ use axum::{
     Router,
 };
 use redis::{AsyncCommands, RedisResult};
-use std::collections::HashMap;
 use std::time::Duration;
 use tokio::task::JoinSet;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -93,7 +92,7 @@ impl EndpointVisits {
         rds.incr(Self::key(endpoint.as_ref()), 1).await
     }
 
-    async fn get_all(rds: &mut RdPool) -> RedisResult<HashMap<String, i32>> {
+    async fn get_all(rds: &mut RdPool) -> RedisResult<Vec<(String, i32)>> {
         let keys: Vec<String> = rds.keys("endpoint:*").await?;
         let mut tasks: JoinSet<(String, RedisResult<i32>)> = JoinSet::new();
         for key in keys {
@@ -104,10 +103,10 @@ impl EndpointVisits {
             });
         }
 
-        let mut map = HashMap::new();
+        let mut map = Vec::new();
         while let Some(Ok((key, value))) = tasks.join_next().await {
             let value = value?;
-            map.insert(key, value);
+            map.push((key[9..key.len()-7].to_string(), value));
         }
         Ok(map)
     }
