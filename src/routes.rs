@@ -1,4 +1,5 @@
 mod auth;
+mod admin;
 
 use crate::{
     docutils::{get, DocRouter},
@@ -38,6 +39,7 @@ pub fn app(app_state: AppState) -> Router {
     };
 
     documented_router
+        .nest("/admin", admin::router())
         .layer(middleware::from_fn_with_state(app_state.clone(), increment_visit_count))
         .layer(
             TraceLayer::new_for_http()
@@ -76,8 +78,7 @@ async fn increment_visit_count(
     let _ = tokio::spawn(async move {
         let mut rds = rds;
         EndpointVisits::increment(&mut rds, path).await.unwrap();
-        let map = EndpointVisits::get_all(&mut rds).await.unwrap();
-        dbg!(map)
+       
     });
     Ok(next.run(req).await)
 }
