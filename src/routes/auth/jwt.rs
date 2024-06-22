@@ -14,10 +14,11 @@ use crate::auth::{
 use crate::docutils::{get, post, DocRouter};
 use crate::errors::DbErrMap;
 use crate::mailer::Mailer;
-use crate::routes::auth::{User, VerificationEntry, VERIFICATION_EXPIRY};
+use crate::routes::auth::{VerificationEntry, VERIFICATION_EXPIRY};
 use crate::state::{AppState, JwtKeys};
 use crate::AsyncRedisConn;
 use crate::{errors::AppError, state::RdPool};
+use crate::queries::user::User;
 
 pub fn router() -> DocRouter<AppState> {
     DocRouter::new()

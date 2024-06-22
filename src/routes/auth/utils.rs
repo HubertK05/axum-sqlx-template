@@ -2,7 +2,7 @@ use crate::auth::{check_password_strength, hash_password};
 use crate::docutils::{get, post, DocRouter};
 use crate::errors::AppError;
 use crate::mailer::Mailer;
-use crate::routes::auth::{VerificationEntry, PASSWORD_CHANGE_EXPIRY, User};
+use crate::routes::auth::{VerificationEntry, PASSWORD_CHANGE_EXPIRY};
 use crate::state::{AppState, RdPool};
 use crate::AsyncRedisConn;
 use anyhow::Context;
@@ -14,6 +14,7 @@ use serde::Deserialize;
 use sqlx::PgPool;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
+use crate::queries::user::User;
 
 pub fn router() -> DocRouter<AppState> {
     DocRouter::new()

@@ -2,7 +2,6 @@ use crate::auth::jwt::Session;
 use crate::auth::oauth::{AuthProvider, OAuthClient, OAuthClients, OAuthUser};
 use crate::docutils::{get, DocRouter};
 use crate::errors::AppError;
-use crate::routes::auth::User;
 use crate::AsyncRedisConn;
 use axum::debug_handler;
 use axum::extract::{Query, State};
@@ -16,6 +15,8 @@ use serde::Deserialize;
 use sqlx::types::Uuid;
 use sqlx::{PgExecutor, PgPool};
 use utoipa::IntoParams;
+use crate::queries::federated_credential::FederatedCredential;
+use crate::queries::user::User;
 
 use crate::state::{AppState, JwtKeys, RdPool};
 
@@ -123,47 +124,6 @@ async fn get_or_create_user(
     };
 
     Ok(res)
-}
-struct FederatedCredential;
-
-impl FederatedCredential {
-    pub async fn insert(
-        db: impl PgExecutor<'_>,
-        user_id: impl AsRef<Uuid>,
-        auth_provider: &AuthProvider,
-        subject_id: impl AsRef<str>,
-    ) -> sqlx::Result<()> {
-        query!(
-            r#"
-    INSERT INTO federated_credentials (user_id, provider, subject_id)
-    VALUES ($1, $2, $3)
-    "#,
-            user_id.as_ref(),
-            auth_provider as _,
-            subject_id.as_ref()
-        )
-        .execute(db)
-        .await?;
-        Ok(())
-    }
-    pub async fn select_user_id(
-        db: impl PgExecutor<'_>,
-        provider: &AuthProvider,
-        subject_id: &str,
-    ) -> sqlx::Result<Option<Uuid>> {
-        Ok(query!(
-            r#"
-    SELECT user_id
-    FROM federated_credentials
-    WHERE provider = $1 AND subject_id = $2
-    "#,
-            provider as _,
-            subject_id
-        )
-        .fetch_optional(db)
-        .await?
-        .map(|r| r.user_id))
-    }
 }
 
 async fn create_user_with_federated_credentials(

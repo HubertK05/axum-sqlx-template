@@ -10,6 +10,7 @@ mod miscutils;
 pub mod routes;
 pub mod setup;
 pub mod state;
+pub mod queries;
 
 use axum::Router;
 use config::load_config;
