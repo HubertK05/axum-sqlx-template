@@ -1,5 +1,5 @@
-mod auth;
 mod admin;
+mod auth;
 
 use crate::{
     docutils::{get, DocRouter},
@@ -34,6 +34,10 @@ pub fn app(app_state: AppState) -> Router {
         .finish_doc("template", "0.1.0");
 
     if app_state.env().is_dev() {
+        info!(
+            "Enabling Swagger UI at {}{SWAGGER_URI}",
+            app_state.absolute_uri()
+        );
         documented_router = add_swagger(documented_router, docs);
     };
 
@@ -77,7 +81,6 @@ async fn increment_visit_count(
     let _ = tokio::spawn(async move {
         let mut rds = rds;
         EndpointVisits::increment(&mut rds, path).await.unwrap();
-       
     });
     Ok(next.run(req).await)
 }
@@ -93,7 +96,8 @@ impl EndpointVisits {
     }
 
     async fn get_all(rds: &mut RdPool) -> RedisResult<Vec<(String, i32)>> {
-        let keys: Vec<String> = rds.keys("endpoint:*").await?;
+        let key_name: &str = "endpoint:*";
+        let keys: Vec<String> = rds.keys(key_name).await?;
         let mut tasks: JoinSet<(String, RedisResult<i32>)> = JoinSet::new();
         for key in keys {
             let mut task_rds = rds.clone();
@@ -106,7 +110,8 @@ impl EndpointVisits {
         let mut map = Vec::new();
         while let Some(Ok((key, value))) = tasks.join_next().await {
             let value = value?;
-            map.push((key[9..key.len()-7].to_string(), value));
+            info!("{key}");
+            map.push((key[key_name.len() - 1..key.len() - 7].to_string(), value));
         }
         Ok(map)
     }
@@ -120,6 +125,5 @@ fn add_swagger<S>(router: Router<S>, docs: OpenApi) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    info!("Enabling Swagger UI");
     router.merge(SwaggerUi::new(SWAGGER_URI).url("/api-doc/openapi.json", docs))
 }

@@ -1,7 +1,8 @@
 use crate::auth::safe_cookie;
 use crate::docutils::DocExtractor;
 use crate::errors::AppError;
-use crate::state::{JwtKeys, RdPool};
+use crate::state::jwt::JwtKeys;
+use crate::state::RdPool;
 use crate::AsyncRedisConn;
 use anyhow::Context;
 use axum::extract::{FromRef, FromRequestParts};
@@ -10,7 +11,6 @@ use axum::http::StatusCode;
 use axum::{async_trait, RequestPartsExt};
 use axum_extra::extract::CookieJar;
 use jsonwebtoken::errors::ErrorKind;
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use redis::RedisResult;
 use serde::{Deserialize, Serialize};
 use time::Duration;
@@ -128,7 +128,9 @@ impl Session {
             return Err(AppError::exp(StatusCode::FORBIDDEN, "Session expired"));
         };
 
-        let claims = decode_jwt(cookie.value(), jwt_keys.decoding_refresh())
+        let claims = jwt_keys
+            .refresh
+            .decode(cookie.value())
             .inspect_err(|e| debug!("Refresh token: {e}"))
             .map_err(|_| AppError::exp(StatusCode::FORBIDDEN, "Session expired"))?;
 
@@ -169,11 +171,15 @@ async fn register_tokens(
     jwt_keys: &JwtKeys,
     refresh_claims: Claims,
 ) -> crate::Result<TokenPair> {
-    let refresh_token = encode_jwt(refresh_claims, jwt_keys.encoding_refresh())
+    let refresh_token = jwt_keys
+        .refresh
+        .encode(&refresh_claims)
         .context("Failed to encode refresh JWT")?;
 
     let access_claims = refresh_claims.new_access_member();
-    let access_token = encode_jwt(access_claims, jwt_keys.encoding_access())
+    let access_token = jwt_keys
+        .access
+        .encode(&access_claims)
         .context("Failed to encode access JWT")?;
 
     TokenFamily::set_valid(rds, refresh_claims).await?;
@@ -193,7 +199,9 @@ pub async fn refresh_jwt_session<'c>(
         return Err(AppError::exp(StatusCode::FORBIDDEN, "Session expired"));
     };
 
-    let claims = decode_jwt(cookie.value(), jwt_keys.decoding_refresh())
+    let claims = jwt_keys
+        .refresh
+        .decode(cookie.value())
         .inspect_err(|e| debug!("Refresh token: {e}"))
         .map_err(|_| AppError::exp(StatusCode::FORBIDDEN, "Session expired"))?;
 
@@ -243,19 +251,6 @@ impl TokenFamily {
     }
 }
 
-fn encode_jwt(claims: Claims, secret_key: &EncodingKey) -> jsonwebtoken::errors::Result<String> {
-    encode(&Header::default(), &claims, secret_key)
-}
-
-fn decode_jwt(token: &str, secret_key: &DecodingKey) -> jsonwebtoken::errors::Result<Claims> {
-    let mut validation = Validation::default();
-    validation.leeway = 5;
-
-    let res = decode(token, secret_key, &validation)?;
-
-    Ok(res.claims)
-}
-
 #[async_trait]
 impl<S> FromRequestParts<S> for Claims
 where
@@ -275,7 +270,7 @@ where
             ));
         };
 
-        let claims = decode_jwt(cookie.value(), jwt_keys.decoding_access()).inspect_err(|e| {
+        let claims = jwt_keys.access.decode(cookie.value()).inspect_err(|e| {
             match e.kind() {
                 ErrorKind::InvalidToken => {}     // not a valid JWT
                 ErrorKind::InvalidSignature => {} // JWT content changed
@@ -313,7 +308,7 @@ mod tests {
     const JWT_REFRESH_SECRET: &str = "refresh";
 
     fn jwt_keys() -> JwtKeys {
-        JwtKeys::new(JWT_ACCESS_SECRET, JWT_REFRESH_SECRET)
+        JwtKeys::from_eddsa()
     }
 
     #[test]
@@ -336,8 +331,8 @@ mod tests {
         let claims = Claims::family_root(USER_ID);
 
         let keys = jwt_keys();
-        let token = encode_jwt(claims, keys.encoding_access()).unwrap();
-        let res = decode_jwt(&token, keys.decoding_access());
+        let token = keys.access.encode::<Claims>(&claims).unwrap();
+        let res = keys.access.decode::<Claims>(&token);
 
         assert!(res.is_ok());
     }
@@ -347,9 +342,9 @@ mod tests {
         let claims = Claims::family_root(USER_ID);
 
         let keys = jwt_keys();
-        let token = encode_jwt(claims, keys.encoding_access()).unwrap();
+        let token = keys.access.encode::<Claims>(&claims).unwrap();
         let malformed_token = &token[..token.len() - 1];
-        let res = decode_jwt(malformed_token, keys.decoding_access());
+        let res = keys.access.decode::<Claims>(&malformed_token);
 
         assert!(res.is_err());
     }

@@ -12,7 +12,7 @@ async fn manual_test_redis() {
         .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
         .start()
         .await
-        .expect("Redis started");
+        .expect("Unable to start redis container");
     let ports = container.ports().await.unwrap();
     dbg!(&ports);
     let port = ports

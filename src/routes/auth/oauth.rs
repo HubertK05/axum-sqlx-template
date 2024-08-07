@@ -2,6 +2,8 @@ use crate::auth::jwt::Session;
 use crate::auth::oauth::{AuthProvider, OAuthClient, OAuthClients, OAuthUser};
 use crate::docutils::{get, DocRouter};
 use crate::errors::AppError;
+use crate::queries::federated_credential::FederatedCredential;
+use crate::queries::user::User;
 use crate::AsyncRedisConn;
 use axum::debug_handler;
 use axum::extract::{Query, State};
@@ -15,10 +17,8 @@ use serde::Deserialize;
 use sqlx::types::Uuid;
 use sqlx::{PgExecutor, PgPool};
 use utoipa::IntoParams;
-use crate::queries::federated_credential::FederatedCredential;
-use crate::queries::user::User;
 
-use crate::state::{AppState, JwtKeys, RdPool};
+use crate::state::{jwt::JwtKeys, AppState, RdPool};
 
 pub fn router() -> DocRouter<AppState> {
     DocRouter::new()

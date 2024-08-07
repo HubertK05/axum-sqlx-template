@@ -1,4 +1,5 @@
 use crate::auth::oauth::AuthProvider;
+use crate::state::environment::Environment;
 use anyhow::bail;
 use axum::http::uri::Scheme;
 use axum::http::Uri;
@@ -14,7 +15,6 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
 };
 
-use crate::state::Environment;
 const ADDRESS: &str = "ADDRESS";
 const DATABASE_URL: &str = "DATABASE_URL";
 const REDIS_URL: &str = "REDIS_URL";
@@ -30,7 +30,6 @@ pub struct Configuration {
     pub domain_name: AbsoluteUri,
     pub redis_url: String,
     pub oauth: OAuthConfiguration,
-    pub jwt: JwtConfiguration,
     pub smtp: SmtpConfiguration,
 }
 
@@ -60,21 +59,6 @@ impl OAuthConfiguration {
         Self {
             is_enabled: true,
             github: OAuthAccess::from_env(AuthProvider::Github),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct JwtConfiguration {
-    pub access_secret: String,
-    pub refresh_secret: String,
-}
-
-impl JwtConfiguration {
-    fn from_env() -> Self {
-        Self {
-            access_secret: var("JWT_ACCESS_SECRET").unwrap(),
-            refresh_secret: var("JWT_REFRESH_SECRET").unwrap(),
         }
     }
 }
@@ -129,8 +113,6 @@ impl Configuration {
 
         let oauth: OAuthConfiguration = OAuthConfiguration::from_env();
 
-        let jwt: JwtConfiguration = JwtConfiguration::from_env();
-
         let smtp: SmtpConfiguration = SmtpConfiguration::from_env();
 
         Self {
@@ -140,7 +122,6 @@ impl Configuration {
             redis_url,
             domain_name,
             oauth,
-            jwt,
             smtp,
         }
     }
@@ -168,8 +149,6 @@ impl Configuration {
 
         let oauth: OAuthConfiguration = config.get("oauth").unwrap();
 
-        let jwt: JwtConfiguration = config.get("jwt").unwrap();
-
         let smtp: SmtpConfiguration = config.get("smtp").unwrap();
 
         Self {
@@ -179,7 +158,6 @@ impl Configuration {
             redis_url,
             domain_name,
             oauth,
-            jwt,
             smtp,
         }
     }
